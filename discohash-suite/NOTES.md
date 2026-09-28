@@ -110,11 +110,53 @@ surfaced during this review because of its direct functional overlap with
    `>>> USER INPUT REQUIRED <<<` at the point where they're read, per the
    user's request to make it obvious where personal setup is needed.
 
+## Sandbox testing done (before any real-hardware pass)
+
+Everything below was verified in the dev sandbox, without a real pi,
+Discord connection, or SSH target:
+
+- Both files syntax-check clean (`py_compile`); `config.toml.example`
+  parses as valid TOML matching this fork's real `[main.plugins.x]`
+  section style.
+- `discohash_ng.py` was loaded through the **actual** jayofelony plugin
+  loader (`Plugin.__init_subclass__`, from the real cloned framework
+  source, not a mock) and confirmed to register correctly as
+  `discohash_ng`, with all four hooks it uses
+  (`on_loaded`/`on_handshake`/`on_epoch`/`on_internet_available`)
+  cross-checked against real `plugins.on(...)` call sites in
+  `agent.py`/`automata.py`/`cli.py` for correct names and argument
+  signatures.
+- 18 logic-level tests against `discohash_ng.py` (mocked filesystem/
+  subprocess/requests): `.pcap` files are correctly ignored end-to-end,
+  `.pcapng` files are correctly processed, duplicate-post state persists
+  across instances/restarts, GPS parsing works for both `.gps.json` and
+  `.geo.json`, a missing handshake directory doesn't crash the scan, and
+  critically - **a successful post never sleeps or retries**, a flaky
+  post that succeeds on the 3rd try sleeps exactly twice, and a
+  permanently-failing post stops cleanly at `retry_attempts` without ever
+  marking the file as posted.
+- 11 logic-level tests against `hashbot.py` (stubbed `discord`/`paramiko`,
+  real `python-dotenv`): all 6 commands register, a missing `.env` value
+  aborts with a clear message naming it, the authorization check blocks a
+  non-matching Discord user ID and passes the authorized one, `ssh_run()`
+  correctly relays stdout and reports connection failures, and the
+  confirm flow requires the *exact* `Yes!`/`NO!` text - a lowercase `yes`
+  or a message from a different user/channel does not match.
+- No bugs found in either file during this pass.
+
 ## Still open / needs real-hardware testing
 
-- Not yet tested against a live pi + 3.5" TFT + jayofelony 64-bit image -
-  this is a from-source rewrite reasoned through and cross-checked
-  against the framework's real hooks/behavior, not yet run.
+This sandbox has no path to Discord's API and can't install the real
+`discord.py`/`paramiko` packages, so the following still need the actual
+pi + 3.5" TFT + jayofelony 64-bit image, a real Discord bot/webhook, and
+real SSH access, per `SETUP.md`:
+
+- An actual captured handshake posting to Discord end-to-end (real
+  `hcxpcapngtool`/`hcxhashtool` output, real webhook delivery).
+- `hashbot.py` actually connecting to Discord and responding to commands
+  for real.
+- `!reboot`/`!poweroff` actually reaching the pi over real SSH and
+  executing (including the sudoers scoping from `SETUP.md` step 8).
 - `hcxpcapngtool`/`hcxhashtool` command-line flags were carried over
   unchanged from the original `discohash.py` (already known-correct
   usage, matches the pattern in this fork's own bundled `hashie`-family

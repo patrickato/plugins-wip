@@ -43,6 +43,16 @@ Follow [`SETUP.md`](SETUP.md) from the top - it walks through creating
 the Discord server/bot/webhook, setting up SSH access, and filling in
 every config file, in order.
 
+## Testing so far
+
+Sandbox-tested (no real pi/Discord/SSH available there): both files
+syntax/TOML-check clean, `discohash_ng.py` registers correctly against
+the **real** jayofelony plugin loader with all four hooks verified
+against real framework call sites, 18 logic tests on `discohash_ng.py`
+and 11 on `hashbot.py` all pass (dedup protection, `.pcap`-vs-`.pcapng`
+filtering, retry-only-on-failure behavior, exact-match auth/confirm
+logic). No bugs found. Full detail in [`NOTES.md`](NOTES.md).
+
 ## What's still needed before this can move to `complete-plugins`
 
 - [ ] Real-hardware install/test on the actual pi + 3.5" TFT setup
