@@ -1,0 +1,33 @@
+# DiscoHashNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly, or the plugin will error or
+# silently no-op. This matches the style jayofelony's own bundled plugins
+# use in pwnagotchi/defaults.toml.
+#
+# main.plugins.enabled is the master list - discohash_ng also needs to be
+# added there, or copied into custom_plugins, before it loads at all.
+
+[main.plugins.discohash_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# The Discord webhook URL for the channel DiscoHashNG should post hashes
+# into. Server Settings -> Integrations -> Webhooks -> New Webhook -> Copy
+# Webhook URL. See ../SETUP.md step 6.
+webhook_url = "PASTE_YOUR_DISCORD_WEBHOOK_URL_HERE"
+
+# Where your handshakes actually live. The jayofelony 64-bit image default
+# is /etc/pwnagotchi/handshakes - only change this if you've customized
+# bettercap's handshake path.
+handshake_dir = "/etc/pwnagotchi/handshakes"
+
+# Where DiscoHashNG remembers which handshakes it has already posted, so
+# it never double-posts across a reboot or a backlog re-scan.
+state_file = "/etc/pwnagotchi/discohash_ng.posted.json"
+
+# If a Discord post fails (network hiccup, Discord hiccup), how many times
+# to retry and how long to wait between retries, in seconds. A successful
+# post never retries - these only matter on failure.
+retry_attempts = 3
+retry_delay = 5
