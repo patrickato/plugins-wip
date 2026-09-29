@@ -1,0 +1,10 @@
+# VizNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.viz_ng]
+enabled = true
+
+# No other options - this plugin has none, same as the original.
+# Visit http://pwnagotchi.local:8080/plugins/viz_ng/ to see the graph.

@@ -1,0 +1,16 @@
+# TouchUING - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.touch_ui_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# BCM pin numbers for optional physical buttons, if you have any wired
+# up alongside the touchscreen. Omit "gpios" entirely if you don't.
+# [main.plugins.touch_ui_ng.gpios]
+# ok = 6
+# back = 5
+# next = 24
+# prev = 16

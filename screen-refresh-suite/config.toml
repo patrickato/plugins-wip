@@ -1,0 +1,15 @@
+# ScreenRefreshNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.screen_refresh_ng]
+enabled = true
+
+# Number of UI update ticks between forced display refreshes. Set to 0
+# to disable.
+refresh_interval = 50
+
+# If true, briefly shows "Screen cleaned" in the status element after
+# each refresh.
+show_status = true

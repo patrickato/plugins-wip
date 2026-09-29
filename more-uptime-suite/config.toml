@@ -1,0 +1,19 @@
+# MoreUptimeNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.more_uptime_ng]
+enabled = true
+
+# If true, hijacks the stock "uptime" UI element's label/value instead of
+# creating a separate element. If false (default), adds its own
+# "more_uptime_ng" element.
+override = false
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the element, only used when override is false.
+# Leave both commented out (or absent) for the default,
+# top-right-ish corner (ui.width() - 58, 12).
+# position_x = 10
+# position_y = 12

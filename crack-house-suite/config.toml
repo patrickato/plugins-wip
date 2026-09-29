@@ -1,0 +1,51 @@
+# CrackHouseNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.crack_house_ng]
+enabled = true
+
+# "vertical" or "horizontal" - only changes the default on-screen layout
+# and the fallback element position (see position_x/position_y below).
+orientation = "vertical"
+
+# Potfiles/.cracked files this plugin reads on load to build its list of
+# known cracked networks. Missing files are now skipped with a log line
+# instead of crashing the plugin (the original crashed on load if even
+# one of these didn't exist).
+files = [
+  "/root/handshakes/wpa-sec.cracked.potfile",
+  "/root/handshakes/my.potfile",
+  "/root/handshakes/OnlineHashCrack.cracked",
+]
+
+# Where the merged, deduplicated list is written as a backup.
+saving_path = "/root/handshakes/crack_house_ng.potfile"
+
+# Show a small "(HH:MM) nearby/total" stats element alongside the main one.
+display_stats = true
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the main element. Leave both commented out (or
+# absent) to use the built-in default for the chosen orientation
+# (vertical: 180,61 / horizontal: 0,91) - the same fallback values the
+# original used, since this fork's plugin hooks never actually receive
+# enough display-model information to auto-detect a position (the
+# original's ui.is_waveshare_v2()-style detection never worked on this
+# fork at all - see README).
+# position_x = 180
+# position_y = 61
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the stats element, only used when display_stats is
+# true. Leave both commented out for the default (0, 30).
+# stats_position_x = 0
+# stats_position_y = 30
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Wireless interface to check for "not associated" state before
+# re-scanning for a nearby cracked network. Leave unset to read the real
+# interface from pwnagotchi's own config.toml ([main] iface) - only set
+# this if you specifically want to check a different interface.
+# iface = "wlan0"
