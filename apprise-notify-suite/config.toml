@@ -1,0 +1,33 @@
+main.plugins.apprise_notify_ng.enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# A list of Apprise service URLs - one plugin, many destinations. Examples:
+#   "ntfy://ntfy.sh/your-topic-here"
+#   "discord://webhook_id/webhook_token"
+#   "mailto://user:password@gmail.com"
+#   "pover://user_key@token"
+# Full URL syntax for every supported service: https://github.com/caronc/apprise#popular-notification-services
+main.plugins.apprise_notify_ng.urls = []
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Alternative to (or combined with) `urls` above: point at a YAML file of
+# Apprise config entries instead of listing URLs inline.
+# main.plugins.apprise_notify_ng.config_path = "/etc/pwnagotchi/apprise.yml"
+
+# Which real events to notify on. Only real hooks on this fork are ever
+# wired up - anything else here is logged and skipped, never a crash.
+# Available: ready, handshake, peer_detected, peer_lost, rebooting,
+#            bored, sad, excited, lonely, grateful, angry
+main.plugins.apprise_notify_ng.events = ["ready", "handshake", "peer_detected", "rebooting"]
+
+# Attach a fresh screenshot of the unit's display to each notification.
+main.plugins.apprise_notify_ng.attach_screenshot = true
+
+# Minimum seconds between two notifications being sent (a rapid burst of
+# peer_detected/handshake events is throttled to this pace, never dropped -
+# just queued and sent at this cadence).
+main.plugins.apprise_notify_ng.min_interval_seconds = 5
+
+# Notification queue size before new events start being dropped instead of
+# queued (protects memory if notifications can't be sent for a long time).
+main.plugins.apprise_notify_ng.max_queue_size = 200

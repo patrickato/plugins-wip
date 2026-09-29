@@ -1,0 +1,15 @@
+main.plugins.terminal_ng.enabled = true
+
+# CIDR ranges allowed to load the in-browser terminal from the pwnagotchi
+# web UI. Defaults to the standard private ranges (replaces the original's
+# two hardcoded, author-specific subnets that wouldn't match most LANs).
+main.plugins.terminal_ng.allowed_networks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+
+# Where WebSSH2 itself listens - the iframe points here.
+main.plugins.terminal_ng.ws_host = "127.0.0.1"
+main.plugins.terminal_ng.ws_port = 2222
+
+# How long (attempts x interval, in seconds) to wait for the webssh2
+# systemd service to report itself listening on first install.
+main.plugins.terminal_ng.startup_poll_attempts = 12
+main.plugins.terminal_ng.startup_poll_interval = 5

@@ -1,0 +1,26 @@
+main.plugins.discord_ng.enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+main.plugins.discord_ng.webhook_url = "https://discord.com/api/webhooks/xxxx/xxxx"
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# WiGLE API key (Basic-auth token) for BSSID -> location lookups on captured
+# handshakes. Leave unset (or set disable_wigle_lookup = true) to skip this
+# entirely - handshake reports still work, just without a map link.
+# main.plugins.discord_ng.wigle_api_key = "your-wigle-basic-auth-token"
+
+# Skip WiGLE lookups entirely, even if a key is set above.
+main.plugins.discord_ng.disable_wigle_lookup = false
+
+# "file" attaches the actual handshake capture to the Discord message.
+# "json_only" sends just the embed/text, no file upload.
+main.plugins.discord_ng.attachment_mode = "file"
+
+# Include a "previous session" summary report (handshakes/epochs/duration/
+# deauths) whenever the unit comes online after a restart with a non-empty
+# prior session.
+main.plugins.discord_ng.include_session_stats = true
+
+# Where the WiGLE location cache is stored. Defaults to alongside your
+# handshakes directory if left unset.
+# main.plugins.discord_ng.cache_file = "/etc/pwnagotchi/handshakes/discord_ng_wigle_cache.json"
