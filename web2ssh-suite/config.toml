@@ -1,0 +1,110 @@
+# Web2SSHNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (web2ssh_ng.py works around this
+# itself with the module-level DEFAULTS dict + _opt()/_opt_int()/_opt_bool()
+# pattern, but the shipped block below still spells everything out so it's
+# all visible/editable in one place, matching this repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.web2ssh_ng], matching
+# the plugin FILE's exact basename (web2ssh_ng.py), NOT the class name
+# (Web2SSHNG) and NOT the original's section name (web2ssh). This is not a
+# style choice: this fork's loader (pwnagotchi/plugins/__init__.py)
+# registers and looks up every plugin - both whether it's "enabled" at all,
+# and its options table - by the plugin file's exact basename, verbatim,
+# case included. A section spelled differently from the file's basename
+# would never even show up in the framework's "enabled" list, so the
+# plugin would silently never load. See NOTES.md for the full writeup.
+#
+# WHAT THIS PLUGIN DOES, so there are no surprises: it runs a small web
+# server that executes shell commands AS ROOT when you submit them through
+# a browser, behind a username/password prompt. This is inherently a
+# powerful/dangerous surface - the point of this rebuild is making sure it
+# can never come up with a guessable/default credential pair, and making
+# it easy to restrict who can even reach it. Read `username`/`password` and
+# `bind_scope` below carefully before enabling this.
+
+[main.plugins.web2ssh_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# >>> USER INPUT REQUIRED <<<
+# ---------------------------------------------------------------------
+# No working default is shipped for either of these, on purpose - see
+# NOTES.md/README.md. If username or password is left blank, missing, or
+# set to an obviously-default value (e.g. "changeme", "admin", "password",
+# "root", "12345" - see PLACEHOLDER_CREDENTIALS in web2ssh_ng.py for the
+# full list), the plugin logs a clear error on startup and does NOT start
+# its server at all. There is no code path that lets it come up with a
+# guessable/default credential pair.
+username = ""
+password = ""
+
+port = 8082
+
+# ---------------------------------------------------------------------
+# bind_scope - who can reach this, made easy to actually use
+# ---------------------------------------------------------------------
+# One of:
+#   "auto"      (default/recommended) - if a live Tailscale interface is
+#               detected, binds to that specific Tailscale IP and logs/
+#               shows the exact URL to visit. If Tailscale isn't detected,
+#               falls back to 127.0.0.1 only (reachable on this device, or
+#               via an SSH tunnel/port-forward) and logs a friendly warning
+#               explaining your options.
+#   "tailscale" - REQUIRES a detected Tailscale interface. If none is
+#               found, the plugin logs an error and refuses to start its
+#               server at all (fail-safe - it never silently falls back to
+#               something broader than this explicit choice).
+#   "localhost" - always binds 127.0.0.1 only, unconditionally.
+#   "lan"       - binds 0.0.0.0 (every interface on your local network).
+#               An explicit, deliberate opt-in - the plugin logs a clear,
+#               impossible-to-miss warning every time it starts this way,
+#               because this makes it reachable by anyone on your LAN.
+#
+# Whatever scope is actually used, the exact URL to visit is always logged
+# AND shown as a banner at the top of the page itself in your browser.
+bind_scope = "auto"
+
+# ---------------------------------------------------------------------
+# command_mode - what /execute is allowed to run
+# ---------------------------------------------------------------------
+# One of:
+#   "shortcuts" (default/recommended) - only a command that exactly
+#               matches one of the [main.plugins.web2ssh_ng.shortcuts]
+#               table's values below can ever run. Anything else is
+#               rejected with a clear message and a shell is never
+#               invoked for it. The page only shows the shortcut buttons
+#               in this mode - no free-text box is rendered at all.
+#   "free"      - shows the shortcut buttons AND the original's free-text
+#               command box (arbitrary root shell commands). The page
+#               always shows a clear warning banner in this mode.
+command_mode = "shortcuts"
+
+# A hung command is killed and reported as timed-out after this many
+# seconds, instead of hanging the request forever (the original had no
+# timeout at all).
+command_timeout_seconds = 30
+
+# Rendered command output longer than this many characters is truncated
+# (with a visible note saying so), so a runaway command can't produce an
+# unusably huge page.
+max_output_chars = 20000
+
+# ---------------------------------------------------------------------
+# Shortcut commands - label = "exact shell command"
+# ---------------------------------------------------------------------
+# Edit/add your own freely. In "shortcuts" mode (the default), ONLY a
+# command exactly matching one of these values is ever executed - this is
+# the original plugin's own shortcut set, unchanged.
+[main.plugins.web2ssh_ng.shortcuts]
+Shutdown = "sudo shutdown -h now"
+Reboot = "sudo reboot"
+"Ping IP" = "ping -c 4 8.8.8.8"
+"Ping DNS" = "ping -c 4 google.com"
+Inbox = "sudo pwngrid --inbox"
+Pwnkill = "sudo killall -USR1 pwnagotchi"
+Plugins = "ls /etc/pwnagotchi/custom-plugins"
+Status = "systemctl status pwnagotchi --no-pager"
+Config = "cat /etc/pwnagotchi/config.toml"
+"Check Wi-Fi" = "lsusb && iwconfig"
