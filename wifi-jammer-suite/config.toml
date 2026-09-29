@@ -1,0 +1,49 @@
+# WifiJammerNG - add this block to /etc/pwnagotchi/config.toml
+#
+# ============================================================================
+# FOR YOUR OWN AUTHORIZED LAB HARDWARE ONLY.
+# ============================================================================
+# This plugin sends real 802.11 deauthentication frames via bettercap.
+# authorized_networks is EMPTY by default on purpose: an empty list means
+# this plugin loads and does nothing at all, ever. It will NEVER act on
+# any network you have not explicitly listed below by BSSID or SSID.
+# That list - not physical signal range - is what keeps this plugin
+# scoped to hardware you actually control. Do not add anything here that
+# isn't yours or that you don't have explicit permission to test against.
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.wifi_jammer_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# List every network this plugin is allowed to target - and ONLY those.
+# Each entry can be either:
+#   - a BSSID (the AP's MAC address, e.g. "AA:BB:CC:DD:EE:FF") - the
+#     precise, unambiguous way to identify one specific radio you own.
+#     BSSID-form entries also show up on the manual "fire now" webhook
+#     page (see NOTES.md/README.md).
+#   - an SSID (the network's name, e.g. "MyLabNetwork") - easier to type
+#     if you don't have the MAC handy, but less precise (matches by name
+#     only - fine for a lab network you control and named yourself, but
+#     be aware a name match doesn't verify the *specific radio* the way
+#     a BSSID does).
+# Example (replace with your own gear before enabling):
+# authorized_networks = ["AA:BB:CC:DD:EE:FF", "MyLabTestNetwork"]
+authorized_networks = []
+
+# Minimum seconds between repeated deauth bursts against the SAME target,
+# so a target sitting in range doesn't get hammered on every single
+# association/handshake event. This is a floor, not a schedule - it only
+# limits how often, never how the plugin decides to fire.
+cooldown_seconds = 15
+
+# Fire automatically as soon as bettercap associates with (interacts
+# with) an authorized target - the easiest way to test on demand, since
+# it doesn't require first getting a full handshake capture.
+fire_on_association = true
+
+# Also fire automatically whenever a handshake is captured from an
+# authorized target (this was the original plugin's only trigger).
+fire_on_handshake = true
