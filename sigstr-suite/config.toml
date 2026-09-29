@@ -1,0 +1,110 @@
+# SigStrNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (SigStrNG.py works around this
+# itself with the module-level DEFAULTS dict + _opt() pattern, but the
+# shipped block below still spells everything out so it's all visible/
+# editable in one place, matching this repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.sigstr_ng], matching
+# the plugin FILE's exact basename (sigstr_ng.py). This is not a style
+# choice: this fork's loader (pwnagotchi/plugins/__init__.py) registers and
+# looks up every plugin - both whether it's "enabled" at all, and its
+# options table - by the plugin file's basename, verbatim, case included.
+# A section spelled differently from the file's basename would never even
+# show up in the framework's "enabled" list, so the plugin would silently
+# never load. See NOTES.md for the full verified writeup.
+#
+# Every option below has a working default. Nothing in this file is
+# genuinely required to be filled in by hand.
+
+[main.plugins.sigstr_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# Interface / measurement
+# ---------------------------------------------------------------------
+
+# Wireless interface to read signal strength from. If this interface
+# isn't among what `iw dev` actually enumerates on your system, the
+# plugin automatically falls back to the first wireless interface it
+# does find, and logs a clear warning naming which one it picked - the
+# original hardcoded "wlan0" with no fallback at all.
+interface = "wlan0"
+
+# Minimum seconds between actual RSSI measurements (each one is an
+# `iw dev <interface> link` shell-out). The on-screen display can still
+# redraw more often than this - between measurements it just reuses
+# the last known reading, nothing is re-measured. This replaces the
+# original plugin's separate self-rescheduling background timer thread
+# (see NOTES.md, bug #3) with a plain timestamp check inside
+# on_ui_update - there is no background thread in this rebuild at all.
+refresh_interval = 2
+
+# ---------------------------------------------------------------------
+# Display
+# ---------------------------------------------------------------------
+
+# Width, in characters, of the on-screen `|████░░░░░░|` bar.
+bar_length = 10
+
+label = "Signal"
+
+# Screen position. Negative ui_position_x means "this many pixels in
+# from the right edge" (same convention MadHatterNG.py uses) - the
+# original hardcoded a fixed (0, 205); that pair is kept as the
+# *default* here, but both axes are now configurable.
+ui_position_x = 0
+ui_position_y = 205
+
+# Whether to append a compact trend sparkline (▁▂▃▄▅▆▇█) after the bar
+# on-screen, and how many of the most recently retained readings it
+# shows (kept short so the element stays readable on small displays -
+# the webhook status page always shows the full retained history
+# regardless of this setting).
+sparkline_enabled = true
+sparkline_display_points = 12
+
+# How many recent readings to retain for the sparkline/history overall.
+# A bounded ring buffer (collections.deque(maxlen=...)) - this can
+# never grow past this cap, however long the plugin runs.
+history_length = 30
+
+# ---------------------------------------------------------------------
+# Strong / medium / weak classification
+# ---------------------------------------------------------------------
+
+# A reading >= strong_threshold_dbm is tagged "STR" (strong); a reading
+# <= weak_threshold_dbm is tagged "WEAK"; anything in between is tagged
+# "MED" (medium). Typical WiFi RSSI runs roughly -30 dBm (excellent,
+# very close to the AP) to -90 dBm (essentially unusable) - the
+# defaults below are a reasonable general-purpose split, adjust to
+# taste for your own environment/hardware.
+strong_threshold_dbm = -60
+weak_threshold_dbm = -80
+
+# ---------------------------------------------------------------------
+# NEW: optional handshake-capture correlation
+# ---------------------------------------------------------------------
+
+# Off by default. When enabled, each captured-handshake timestamp in
+# timer-suite's CSV is paired with the closest RSSI reading from this
+# plugin's own history (within correlation_window_minutes) and shown
+# on the webhook status page, so you can see how strong your signal
+# was when you actually got a capture. Best-effort and entirely
+# optional - if timer_csv_path doesn't exist, this feature just shows
+# "no correlation data yet" and nothing else is affected.
+correlate_handshakes = false
+
+# Default matches timer-suite's own output_path default, so this works
+# out of the box if you also run timer-suite with its defaults.
+timer_csv_path = "/etc/pwnagotchi/timer_ng.csv"
+
+# How many minutes around a logged handshake timestamp counts as
+# "close enough" to pair it with an RSSI reading.
+correlation_window_minutes = 5
+
+# Upper bound on how many correlation rows the webhook page will ever
+# render at once (most recent first) - a safety cap, not something
+# you're expected to need to change.
+correlation_log_max_points = 200

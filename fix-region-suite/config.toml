@@ -1,0 +1,76 @@
+# FixRegionNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+#
+# IMPORTANT - the section name below is [main.plugins.fix_region_ng],
+# matching the plugin FILE's exact basename (fix_region_ng.py), NOT the
+# class name (FixRegionNG) or the original plugin's section
+# ([main.plugins.fix_region]). This is not a style choice: this fork's
+# loader (pwnagotchi/plugins/__init__.py) registers and looks up every
+# plugin - both whether it's "enabled" at all, and its options table -
+# by the plugin file's basename with ".py" dropped, verbatim. A section
+# spelled anything else for this file would never even show up in the
+# framework's "enabled" list, so the plugin would silently never load at
+# all - not an options bug, a total no-load. See NOTES.md for the full
+# verified writeup.
+#
+# What this plugin actually does to your system, so there are no
+# surprises: it writes a small root-owned shell script
+# (/root/network-fix.sh, containing `iw reg set <region>`) and a
+# systemd unit (/etc/systemd/system/network-fix.service) that runs it
+# on every boot, so the regulatory-domain change survives a reboot
+# without pwnagotchi needing to reapply it every time. It also runs
+# `iw reg set` and `systemctl enable/start` itself the first time (or
+# whenever `region` actually changes), and restarts pwnagotchi once so
+# the change takes effect immediately. Writing root-owned systemd units
+# and running privileged commands is inherent to what changing the
+# radio's regulatory domain requires - it is not a bug, just something
+# you should know before enabling this.
+#
+# You can sanity-check the result yourself at any time with:
+#   iw reg get
+#   iwlist wlan0 channel
+
+[main.plugins.fix_region_ng]
+enabled = false
+
+# ISO 3166-1 alpha-2 country code to force, e.g. "US", "NL", "GB", "DE".
+# Validated at load time (must be exactly two letters, case-insensitive
+# - it's normalized to uppercase for you). An invalid value is logged
+# as an error and NEVER applied; the plugin refuses to pass a bad value
+# to a root-level shell command rather than guessing.
+#
+# "US" (below) is a safe, always-legal-everywhere-ish fallback default,
+# not a suggestion for where you actually are - set this to your real
+# location's code. This is the whole point of the plugin: e.g. setting
+# a European code like "NL"/"GB"/"DE" is what unlocks WiFi channels
+# 12/13, which the default US-locked regulatory domain doesn't allow.
+region = "US"
+
+# Optional, off by default. If a GPS-providing sibling plugin (e.g.
+# this repo's own gps_tagger_ng, or another plugin exposing similar
+# lat/lon coordinates) is loaded and has a current fix, this logs a
+# best-effort "GPS suggests you may be in region XX" line (also shown
+# on the webhook status page) using a small built-in offline
+# bounding-box table. This is a LOGGED SUGGESTION ONLY - it is never
+# applied automatically, under any circumstance. The `region` value
+# above is the only thing this plugin ever actually sets. If no GPS
+# plugin is loaded, or no fix is available, this silently does
+# nothing - it never blocks plugin load or crashes anything. See
+# NOTES.md for the bounding-box table's scope and honest limitations.
+gps_region_suggestion = false
+
+# Internal bookkeeping - the paths this plugin writes to. You shouldn't
+# need to change any of these; they're exposed for completeness/testing
+# rather than because they're something you're expected to tune.
+
+# Small JSON file tracking which region was last actually applied, so
+# a later config.toml edit can be detected as a real change instead of
+# being silently ignored (the original plugin's bug - see NOTES.md).
+state_path = "/root/.fix_region_ng_state.json"
+
+# The generated shell script + systemd unit this plugin manages.
+sh_path = "/root/network-fix.sh"
+service_path = "/etc/systemd/system/network-fix.service"
+service_name = "network-fix"
