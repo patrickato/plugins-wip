@@ -15,6 +15,18 @@ download-all-as-ZIP button.
 Target hardware: Raspberry Pi 4 + 3.5" TFT screen, jayofelony 64-bit
 pwnagotchi image.
 
+## Requirements & dependencies
+
+- Hardware: any pwnagotchi running the jayofelony 64-bit image (verified
+  against a Pi 4 + 3.5" TFT setup)
+- No extra apt or pip packages needed - only the Python standard library
+  (`glob`, `io`, `os`, `zipfile`) plus `Flask`, which pwnagotchi's web UI
+  already depends on. Nothing new to install.
+- No secrets, tokens, or external accounts needed at all - unlike the
+  DiscoHash Suite, there's no user-input-required section here beyond the
+  one config option below, since this plugin only reads files already on
+  the pi and doesn't talk to anything external.
+
 ## What's fixed vs. the original
 
 1. **The `.pcap`-vs-`.pcapng` bug** - the original's glob filter and
