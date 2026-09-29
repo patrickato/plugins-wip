@@ -1,0 +1,32 @@
+# GPSTaggerNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.gps_tagger_ng]
+enabled = true
+
+# Where per-AP GPS tag files are written (one JSON file per AP seen).
+# The directory is created automatically if it doesn't exist.
+pn_output_path = "/etc/pwnagotchi/gps_tagger_ng"
+
+# How far (in feet) the pwnagotchi must have moved since the last time an
+# AP was tagged before its file is rewritten. Keeps a restart (which
+# forgets what it already tagged this run) from blindly overwriting every
+# AP's file again if you haven't actually moved. 50 feet is a
+# general-purpose default sized around typical consumer GPS drift
+# (~10-20 ft under clear sky) - raise it if your GPS is noisier, lower it
+# if you're using a higher-precision receiver.
+min_regap_distance_feet = 50
+
+# How often (in seconds) to log a single "no GPS fix yet" line while GPS
+# isn't locked, instead of one line per event.
+no_gps_log_interval_seconds = 300
+
+# >>> USER INPUT REQUIRED <<< only if manage_gps = true below.
+# Leave manage_gps = false (the default) if you already run this fork's
+# built-in [main.plugins.gps] - do NOT enable both against the same
+# device, they will fight over it.
+manage_gps = false
+# gps_device = "/dev/ttyUSB0"
+# gps_speed = 19200
