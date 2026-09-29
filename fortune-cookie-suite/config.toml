@@ -1,0 +1,39 @@
+main.plugins.fortune_cookie_ng.enabled = true
+
+# "vertical" shows a "Fortune:" label above the message; "horizontal"
+# (default) shows just the message on a single combined line.
+main.plugins.fortune_cookie_ng.orientation = "horizontal"
+
+# How often (in seconds) the displayed fortune rotates while the daemon
+# runs, instead of only ever being picked once at load.
+main.plugins.fortune_cookie_ng.rotate_interval_seconds = 60
+
+# The pool of fortunes to pick from at random. Expand or replace freely.
+main.plugins.fortune_cookie_ng.fortunes = [
+    "You will have a successful hacking session!",
+    "Good fortune will come your way.",
+    "Be prepared for a surprise in your network captures!",
+    "Your Pwnagotchi is feeling lucky today.",
+    "A new handshake is closer than it appears.",
+    "Patience captures more packets than haste.",
+    "The strongest signal is the one you didn't expect.",
+    "Today's deauth is tomorrow's handshake.",
+    "A watched access point never associates.",
+    "Fortune favors the well-antenna'd.",
+    "Your next epoch brings good luck.",
+    "Trust in your wordlist.",
+    "The best channel is the one nobody else is hopping to.",
+    "Great captures come to those who wait.",
+    "A quiet network hides a curious secret.",
+    "Your persistence will be rewarded with a PMKID.",
+    "Somewhere, a weak password awaits discovery.",
+    "The road to root is paved with patience.",
+    "An unexpected peer brings unexpected luck.",
+    "Today is a good day to sniff the air.",
+]
+
+# Optional: if set, shell out to this command (e.g. "fortune") to get a
+# fresh fortune instead of picking from the list above. Leave empty
+# (default) to disable. Falls back gracefully to the configured list if
+# the command is missing, times out, or exits non-zero.
+main.plugins.fortune_cookie_ng.fortune_command = ""

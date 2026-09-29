@@ -1,0 +1,28 @@
+main.plugins.spam_peers_ng.enabled = true
+
+# Messages sent to a newly (or re-) encountered peer. One is picked at random.
+main.plugins.spam_peers_ng.messages = [
+    "THIS TOWN AINT BIG ENOUGH FOR THE 2 OF US",
+    "Hey buddy!",
+    "Pwn here often?",
+    "OMG! No way! A wild pwnagotchi!!!"
+]
+
+# Peer identities that are never greeted, e.g. your own other units.
+# Merged with (not a replacement for) whatever is already recorded on disk.
+main.plugins.spam_peers_ng.known_peers = []
+
+# Where the "already greeted" state (identity -> last-greeted timestamp)
+# is persisted, so it survives a reboot instead of resetting every session.
+# Defaults to /etc/pwnagotchi/spam_peers_ng_state.json if left unset.
+main.plugins.spam_peers_ng.state_file = "/etc/pwnagotchi/spam_peers_ng_state.json"
+
+# Hours before a previously-greeted peer becomes eligible for another
+# greeting. 168 = 1 week. Set to 0 to greet a given peer only once, ever
+# (matches the original plugin's behavior, just made persistent).
+main.plugins.spam_peers_ng.regreet_after_hours = 168
+
+# Random delay (seconds) before the greeting actually fires, so it doesn't
+# look like an instant bot reply. A random value between the two is used.
+main.plugins.spam_peers_ng.min_delay_seconds = 1
+main.plugins.spam_peers_ng.max_delay_seconds = 8

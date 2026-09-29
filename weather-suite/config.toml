@@ -1,0 +1,24 @@
+main.plugins.weather_ng.enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# Get a free API key at https://openweathermap.org/api (see README for
+# steps). There is no default - the plugin will not fetch anything and
+# will show "no api_key configured" on screen until this is set.
+main.plugins.weather_ng.api_key = "PUT_YOUR_OPENWEATHERMAP_API_KEY_HERE"
+
+# City name OpenWeatherMap should look up. See their docs for the
+# "q=" query format if you want to disambiguate with a country code,
+# e.g. "Leeuwarden,NL".
+main.plugins.weather_ng.location = "Leeuwarden"
+
+# "metric" (Celsius), "imperial" (Fahrenheit), or "standard" (Kelvin).
+main.plugins.weather_ng.units = "metric"
+
+# Minimum seconds between live API calls. on_ui_update runs on every
+# render tick, so this throttle is what keeps the plugin from hammering
+# the API - it always displays the last cached result in between.
+main.plugins.weather_ng.refresh_interval_seconds = 600
+
+# Screen position of the weather text element.
+main.plugins.weather_ng.position_x = 120
+main.plugins.weather_ng.position_y = 80

@@ -1,0 +1,15 @@
+main.plugins.birthday_ng.enabled = true
+
+# Which field to show on screen: the running age, or the birth date itself.
+# If both are true, age wins (matches the original's if/elif behavior).
+main.plugins.birthday_ng.show_age = true
+main.plugins.birthday_ng.show_birthday = false
+
+# On-screen position for whichever element is shown.
+main.plugins.birthday_ng.age_x_coord = 0
+main.plugins.birthday_ng.age_y_coord = 0
+
+# Shown instead of the normal age string on the actual anniversary of
+# born_at (same month+day as today). {age} is replaced with the current
+# age string (e.g. "1Yr 2m").
+main.plugins.birthday_ng.birthday_message = "Happy Birthday to me! I am {age} old today!"

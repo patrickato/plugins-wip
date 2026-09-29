@@ -1,0 +1,10 @@
+main.plugins.wifi_adventures_ng.enabled = true
+
+# Purely cosmetic in this rebuild - kept as a config knob in case a future
+# streak/quest display wants it, but nothing currently gates on it.
+main.plugins.wifi_adventures_ng.daily_quest_target = 5
+
+# Where state (handshake count, new-network count, streak, seen BSSIDs) is
+# persisted. Defaults to a JSON file next to the plugin if left unset,
+# same pattern as the original wifi_adventures.py.
+# main.plugins.wifi_adventures_ng.data_path = "/etc/pwnagotchi/wifi_adventures_ng.json"
