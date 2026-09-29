@@ -1,0 +1,39 @@
+# TimerNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.timer_ng]
+enabled = true
+
+# Where the CSV log of every timed capture is written. The original
+# hardcoded /home/pi/data/pwnagotchi_times.csv, which doesn't exist on
+# every setup (different user, different data layout) - this is now
+# configurable, and defaults to a path under /etc/pwnagotchi that this
+# fork's other plugins/config already assume is writable.
+output_path = "/etc/pwnagotchi/timer_ng.csv"
+
+# Maximum number of rows kept in the CSV. The original rewrote the
+# entire file from an unbounded in-memory list on every single
+# handshake with no cap at all - this keeps only the most recent
+# max_rows entries. Set to 0 to disable rotation (unbounded, matching
+# the original's behavior exactly).
+max_rows = 5000
+
+# If true, shows the most recent (or rolling-average) time-to-handshake
+# as a small UI element. Off by default - the original had no on-screen
+# element at all, this is purely opt-in.
+show_on_screen = false
+
+# "last" shows the most recent capture's time-to-handshake; "average"
+# shows a rolling average over the last ui_average_window captures.
+# Only used when show_on_screen is true.
+ui_metric = "last"
+ui_average_window = 10
+
+# Screen position of the on-screen element, only used when
+# show_on_screen is true. Leave both commented out (or absent) to use
+# the automatic default position (bottom-left corner). TOML has no
+# null value, so "unset" - not 0 - is what means "auto" here.
+# position_x = 0
+# position_y = 60
