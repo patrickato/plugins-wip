@@ -1,0 +1,71 @@
+# BluetoothReconNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+#
+# Every option below has a working default. Nothing in this file is
+# genuinely required to be filled in by hand - there is no
+# ">>> USER INPUT REQUIRED <<<" marker in this file for that reason.
+
+[main.plugins.bluetooth_recon_ng]
+enabled = true
+
+# Where the merged BLE + classic device table is persisted as JSON,
+# reloaded on load so counts/history survive a reboot. Same directory
+# convention as crack_house_ng.py's saving_path default.
+device_table_path = "/root/handshakes/bluetooth_recon_ng.json"
+
+# Devices whose last_seen is older than this are pruned from memory and
+# from the persisted file on the next scan cycle. 168 = 7 days. Set to
+# 0 to disable pruning entirely (keep everything forever).
+retention_hours = 168
+
+# When set (an integer, e.g. -80), a sighting with a weaker (more
+# negative) RSSI than this is not recorded/counted. Only applies when
+# RSSI is actually available for that event/radio type. Leave commented
+# out (the default, disabled) to record everything regardless of signal
+# strength.
+# rssi_threshold = -80
+
+# MAC addresses to flag as "known" (is_known=True) on the webhook page.
+# This never drops a known device's data - it only exists to make
+# devices you recognize (your own phone, watch, earbuds, etc.) easy to
+# tell apart from unknown ones at a glance.
+known_devices = []
+# known_devices = ["AA:BB:CC:DD:EE:FF"]
+
+# How often (seconds) the classic BR/EDR `hcitool scan` loop runs. BLE
+# has no equivalent setting - it's event-driven through bettercap's own
+# ble.recon, same as the original blemon_plugin.py.
+classic_scan_interval_seconds = 60
+
+# Optional path to a JSON file of {"AA:BB:CC": "Vendor Name"} entries
+# (uppercase, colon-separated first-3-octet keys) to merge on top of
+# the plugin's built-in curated OUI table, overriding it on a prefix
+# collision. Leave unset to use only the built-in table. See NOTES.md
+# for the built-in table's scope/limitations.
+# oui_extra_path = "/etc/pwnagotchi/bluetooth_recon_ng_oui_extra.json"
+
+# How many minutes around a Bluetooth sighting to look for WiFi network
+# activity (from timer_ng.py's CSV) when correlating the two.
+correlation_window_minutes = 10
+
+# The three WiFi-correlation sources below are all optional and
+# best-effort - if a file/directory doesn't exist, that part of the
+# correlation is just skipped (no crash, no required config). Defaults
+# match each source plugin's own default output path, so this works out
+# of the box if you also run crack_house_ng.py / timer_ng.py /
+# gps_tagger_ng.py with their own defaults.
+crack_house_potfile_path = "/root/handshakes/crack_house_ng.potfile"
+timer_csv_path = "/etc/pwnagotchi/timer_ng.csv"
+gps_tagger_dir_path = "/etc/pwnagotchi/gps_tagger_ng"
+
+# Screen positions for the two on-screen elements ("BLE" count and "BT"
+# count). Leave both of a pair commented out (or absent) to use the
+# built-in default position for that element - same None-means-auto
+# pattern as crack_house_ng.py's position_x/position_y/
+# stats_position_x/stats_position_y.
+# ble_position_x = 0
+# ble_position_y = 15
+# classic_position_x = 0
+# classic_position_y = 25
