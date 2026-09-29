@@ -1,0 +1,109 @@
+# HandshakerNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (handshaker_ng.py works around
+# this itself with the module-level DEFAULTS dict + _opt()/_opt_int()/
+# _opt_bool()/_opt_float() pattern, but the shipped block below still spells
+# everything out so it's all visible/editable in one place, matching this
+# repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.handshaker_ng], matching
+# the plugin FILE's exact basename (handshaker_ng.py), NOT the class name
+# (HandshakerNG) and NOT the original's section name (handshaker). This is
+# not a style choice: this fork's loader (pwnagotchi/plugins/__init__.py)
+# registers and looks up every plugin - both whether it's "enabled" at all,
+# and its options table - by the plugin file's exact basename, verbatim,
+# case included. A section spelled differently from the file's basename
+# would never even show up in the framework's "enabled" list, so the plugin
+# would silently never load. See NOTES.md for the full writeup.
+#
+# WHAT THIS PLUGIN DOES, so there are no surprises: it re-syncs your
+# handshake captures to /boot on every boot (same as the original), shows a
+# live handshake count on your pwnagotchi's screen, and runs a small web
+# server (on its own port, separate from pwnagotchi's main web UI) with a
+# JSON/HTML status page and per-file capture downloads - so you can check
+# "how many handshakes do I have" and grab them even if you can't SSH in.
+#
+# IMPORTANT - THERE IS NO AUTHENTICATION ON THIS PLUGIN'S SERVER. This round
+# deliberately did not build HTTP Basic Auth (see NOTES.md's "not built this
+# round" section) - `bind_scope` below is your ONLY control over who can
+# reach the status page and download your capture files. Read it carefully.
+
+[main.plugins.handshaker_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# Where your handshake captures live
+# ---------------------------------------------------------------------
+# Matches the original plugin's hardcoded "/root/handshakes" as the
+# default, so out-of-the-box behavior is unchanged if you don't touch this -
+# it's just a real, editable option now instead of being baked into the code
+# in two separate places.
+data_path = "/root/handshakes"
+
+# ---------------------------------------------------------------------
+# sync_to_boot - the original's always-on boot-time sync behavior
+# ---------------------------------------------------------------------
+# true (default, matches the original's behavior unconditionally):
+#   on_ready() rsyncs data_path to /boot/handshakes, copies
+#   /var/log/pwnagotchi.log to /boot/pwnagotchi-start.log, and - only if
+#   /boot/custom_plugins exists - moves its contents into
+#   /home/pi/custom_plugins/ and copies /etc/pwnagotchi/config.toml to
+#   /boot/config.toml. Each of these steps is now wrapped in its own
+#   try/except, so one failing step (e.g. a missing folder or a permissions
+#   issue) logs a warning and lets the rest continue, instead of being able
+#   to take the whole plugin down.
+# false: skip all of the above boot-sync behavior entirely.
+sync_to_boot = true
+
+# ---------------------------------------------------------------------
+# This plugin's own dedicated web server
+# ---------------------------------------------------------------------
+# Runs on its own port, separate from pwnagotchi's built-in web UI - so it
+# keeps working even if the main web UI is misbehaving. Pick a port that
+# doesn't collide with another plugin's own server (e.g. web2ssh_ng.py's
+# default is 8082).
+port = 8083
+
+# bind_scope - who can reach this server, made easy to actually use. One of:
+#   "auto"      (default/recommended) - if a live Tailscale interface is
+#               detected, binds to that specific Tailscale IP and logs/
+#               shows the exact URL to visit. If Tailscale isn't detected,
+#               falls back to 127.0.0.1 only (reachable on this device, or
+#               via an SSH tunnel/port-forward) and logs a friendly warning
+#               explaining your options.
+#   "tailscale" - REQUIRES a detected Tailscale interface. If none is found,
+#               the plugin logs an error and refuses to start its server at
+#               all (fail-safe - it never silently falls back to something
+#               broader than this explicit choice).
+#   "localhost" - always binds 127.0.0.1 only, unconditionally.
+#   "lan"       - binds 0.0.0.0 (every interface on your local network).
+#               An explicit, deliberate opt-in - the plugin logs a clear,
+#               impossible-to-miss warning every time it starts this way,
+#               because (with no authentication at all on this plugin)
+#               this makes your handshake count/list and capture files
+#               downloadable by anyone on your LAN.
+#
+# Whatever scope is actually used, the exact URL to visit is always logged
+# AND shown as a banner at the top of the page itself in your browser.
+bind_scope = "auto"
+
+# ---------------------------------------------------------------------
+# On-screen handshake count (pwnagotchi's e-ink display)
+# ---------------------------------------------------------------------
+label = "Handshakes"
+
+# Position, in pixels. Negative x means "this many pixels in from the
+# right edge" (same convention as sigstr_ng.py/MadHatterNG.py). The default
+# below (0, 220) is chosen to avoid sigstr_ng.py's own default position
+# (0, 205) - if you run other suites with on-screen elements, adjust these
+# so nothing overlaps on your specific layout.
+ui_position_x = 0
+ui_position_y = 220
+
+# How often (seconds) the data directory is re-scanned for the on-screen
+# count. Handshake counts change far less often than e.g. signal strength,
+# so this defaults higher than a typical "refresh_interval" - the UI can
+# still redraw more often than this, it just reuses the last known count
+# between scans rather than re-globbing the directory every single tick.
+ui_refresh_interval = 30
