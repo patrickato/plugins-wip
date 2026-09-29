@@ -24,7 +24,7 @@ pwnagotchi image.
 - No extra apt or pip packages - only the Python standard library
   (`json`, `os`, `time`, `math`).
 - No secrets or accounts needed. The only `>>> USER INPUT REQUIRED <<<`
-  item is `gps_device` in `config.toml.example`, and only if you set
+  item is `gps_device` in `config.toml`, and only if you set
   `manage_gps = true` (see below) - leave it commented out otherwise.
 
 ## What's fixed vs. the original (`privacy-nightmare.py`)
@@ -98,7 +98,7 @@ data. You have two options, and you should only ever use one at a time:
 1. Copy `gps_tagger_ng.py` into your custom plugins folder
    (`custom_plugins` in `config.toml`, typically
    `/etc/pwnagotchi/custom-plugins/`).
-2. Add the block from `config.toml.example` to
+2. Add the block from `config.toml` to
    `/etc/pwnagotchi/config.toml`, and decide on the GPS setup above.
 3. Restart pwnagotchi:
    ```

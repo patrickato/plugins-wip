@@ -85,3 +85,19 @@ the real things.
 - The cookie-based `on_webhook()` flow (visiting the plugin's web page to
   get redirected into banthex.de logged in) hasn't been exercised in a
   real browser.
+
+## Config verified against upstream (2026-09-28)
+
+Compared `config.toml` against the real upstream sample
+(`itsdarklikehell/pwnagotchi-plugins/configs/banthex-de.toml`, which
+includes real `api_key`/`api_url`/`download_results`/`whitelist`
+values - the API key and whitelist entries in that sample belong to the
+original author, not this user, so they were not copied forward; this
+plugin's own `config.toml` uses clearly-marked placeholder values
+instead) and the original's `__defaults__`
+(`enabled`, `api_key`, `api_url`, `download_results`, `whitelist`).
+Checked every `self.options.get(...)`/`self.options[...]` call in
+`banthex_ng.py`: `api_key`, `api_url`, `whitelist`, `download_results`,
+`download_check_interval_hours`, `upload_timeout`, `download_timeout`,
+`max_upload_attempts` are all present and documented. Renamed from
+`config.toml.example` to `config.toml`.

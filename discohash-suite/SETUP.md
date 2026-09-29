@@ -47,7 +47,7 @@ Save both somewhere - you'll paste them into `hashbot/.env` in step 7.
 
 1. In Discord, go to the `disco-hashes` channel -> the gear/settings icon -> **Integrations** -> **Webhooks** -> **New Webhook**.
 2. Name it anything (e.g. "DiscoHashNG"), leave the channel as `disco-hashes`.
-3. Click **Copy Webhook URL**. This is your `webhook_url` for `pi-plugin/config.toml.example`.
+3. Click **Copy Webhook URL**. This is your `webhook_url` for `pi-plugin/config.toml`.
 
 ## 7. Set up SSH key access from your computer to the pwnagotchi
 
@@ -82,7 +82,7 @@ If you'd rather not grant this at all, skip it - `!status`, `!uptime`, `!dumphas
 
 ## 9. Fill in the config files
 
-- **`pi-plugin/config.toml.example`**: fill in `webhook_url` from step 6, then merge this block into `/etc/pwnagotchi/config.toml` on the pi. Follow `pi-plugin/README.md` for full install steps.
+- **`pi-plugin/config.toml`**: fill in `webhook_url` from step 6, then merge this block into `/etc/pwnagotchi/config.toml` on the pi. Follow `pi-plugin/README.md` for full install steps.
 - **`hashbot/.env.example`**: copy to `hashbot/.env`, fill in everything from steps 4, 5, and 7. Follow `hashbot/README.md` for full run steps.
 
 ## 10. (Optional) Keep hashbot.py running automatically

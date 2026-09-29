@@ -27,7 +27,7 @@ changed here.
 2. Copy `discohash_ng.py` into your custom plugins folder (matches
    `custom_plugins` in your `config.toml`, typically
    `/etc/pwnagotchi/custom-plugins/`).
-3. Add the block from `config.toml.example` to
+3. Add the block from `config.toml` to
    `/etc/pwnagotchi/config.toml`, and fill in `webhook_url` (see
    `../SETUP.md` step 6 for how to get one).
 4. Add `discohash_ng` to your `main.plugins.enabled` list if your config

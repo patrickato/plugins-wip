@@ -26,7 +26,7 @@ pwnagotchi image.
 - Python: `requests` (pip) - the only non-stdlib import.
 - **>>> USER INPUT REQUIRED <<<**: an account and API key at
   [banthex.de](https://banthex.de/index.php/register/) - see
-  `config.toml.example`.
+  `config.toml`.
 
 ## What's fixed vs. the original
 
@@ -61,7 +61,7 @@ it. Nothing to do about it here, just flagging it so it's not a surprise.
 
 1. Copy `banthex_ng.py` into your custom plugins folder (`custom_plugins`
    in `config.toml`, typically `/etc/pwnagotchi/custom-plugins/`).
-2. Add the block from `config.toml.example` to
+2. Add the block from `config.toml` to
    `/etc/pwnagotchi/config.toml`, filling in your banthex.de `api_key`
    (`>>> USER INPUT REQUIRED <<<`).
 3. Restart pwnagotchi:

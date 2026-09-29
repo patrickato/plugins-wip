@@ -146,3 +146,16 @@ things.
   commonly hit code path (it only runs when a raw PMKID was extracted
   but no AP name info was available at all) - worth keeping an eye on
   if you ever see a "PMKID could not be repaired" log line.
+
+## Config verified against upstream (2026-09-28)
+
+Compared `config.toml` against the real upstream sample
+(`itsdarklikehell/pwnagotchi-plugins/configs/hashespwnagotchi.toml`,
+which just sets `enabled = true`) and the original's `__defaults__`
+(`enabled`, `api_key` only - everything else upstream was either
+hardcoded or missing entirely). Checked every `self.options.get(...)`/
+`self.options[...]` call in `hashespwnagotchi_ng.py`: `api_key`,
+`api_url`, `whitelist`, `interval`, `hcxpcapngtool_timeout`,
+`upload_timeout`, `max_upload_attempts`, `upload_retry_delay` are all
+present and documented. Renamed from `config.toml.example` to
+`config.toml`.

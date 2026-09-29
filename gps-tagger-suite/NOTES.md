@@ -153,3 +153,16 @@ and the on-screen UI elements are exercised against the real
   command sequence is unchanged from the original (only the config
   access around it was hardened) and hasn't been exercised against a
   real GPS device in this sandbox.
+
+## Config verified against upstream (2026-09-28)
+
+Compared `config.toml` against the real upstream sample
+(`itsdarklikehell/pwnagotchi-plugins/configs/privacy-nightmare.toml`,
+which just sets `enabled = false` - no other options documented
+upstream) and against every `self.options.get(...)`/`self.options[...]`
+call in `gps_tagger_ng.py`. All options the code actually reads
+(`pn_output_path`, `min_regap_distance_feet`,
+`no_gps_log_interval_seconds`, `manage_gps`, `gps_device`, `gps_speed`)
+are present and documented in `config.toml`. Renamed from
+`config.toml.example` to `config.toml` - it's a complete, ready-to-edit
+config, not a stub.

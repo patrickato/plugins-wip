@@ -48,7 +48,7 @@ better.
   nothing extra to install for it specifically.
 - Python: `requests` (pip) - the only non-stdlib import.
 - **>>> USER INPUT REQUIRED <<<**: an account and API key at
-  [hashes.pw](https://hashes.pw) - see `config.toml.example`.
+  [hashes.pw](https://hashes.pw) - see `config.toml`.
 
 ## What's fixed vs. the original
 
@@ -100,7 +100,7 @@ better.
 2. Copy `hashespwnagotchi_ng.py` into your custom plugins folder
    (`custom_plugins` in `config.toml`, typically
    `/etc/pwnagotchi/custom-plugins/`).
-3. Add the block from `config.toml.example` to
+3. Add the block from `config.toml` to
    `/etc/pwnagotchi/config.toml`, filling in your hashes.pw `api_key`
    (`>>> USER INPUT REQUIRED <<<`).
 4. Restart pwnagotchi:

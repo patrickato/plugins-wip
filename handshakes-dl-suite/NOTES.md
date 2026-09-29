@@ -99,3 +99,14 @@ download-link path instead of a bare filename substring.
   built in memory (`io.BytesIO`) before sending, which is fine for
   reasonable capture counts but could matter if `max_results` is raised
   very high.
+
+## Config verified against upstream (2026-09-28)
+
+Compared `config.toml` against the real upstream sample
+(`itsdarklikehell/pwnagotchi-plugins/configs/handshakes-dl-hashie.toml`,
+which just sets `enabled = true`) and the original's `__defaults__`
+(`enabled` only - `max_results` doesn't exist upstream at all, since the
+original always showed every capture with no limit). Checked
+`self.options.get("max_results")` in `handshakes_dl_ng.py` - it's
+present and documented in `config.toml`. Renamed from
+`config.toml.example` to `config.toml`.

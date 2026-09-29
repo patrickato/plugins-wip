@@ -115,7 +115,7 @@ surfaced during this review because of its direct functional overlap with
 Everything below was verified in the dev sandbox, without a real pi,
 Discord connection, or SSH target:
 
-- Both files syntax-check clean (`py_compile`); `config.toml.example`
+- Both files syntax-check clean (`py_compile`); `config.toml`
   parses as valid TOML matching this fork's real `[main.plugins.x]`
   section style.
 - `discohash_ng.py` was loaded through the **actual** jayofelony plugin
@@ -165,3 +165,28 @@ real SSH access, per `SETUP.md`:
 - SSH-based `!status`/`!reboot`/etc. depend on the sudoers/SSH-key setup
   in `SETUP.md` being followed correctly - worth a dry run before relying
   on `!reboot` in a real situation.
+
+## Config verified against upstream (2026-09-28)
+
+Compared `pi-plugin/config.toml` against the real upstream sample
+(`itsdarklikehell/pwnagotchi-plugins/configs/discohash.toml`, which just
+sets `enabled = true`) and `discohash.py`'s own `__defaults__`
+(`enabled` only - `webhook_url`, `handshake_dir`, `state_file`,
+`retry_attempts`, `retry_delay` don't exist upstream as configurable
+options at all; the original hardcoded its behavior and read the webhook
+URL a different, less clean way). Checked every `self.options.get(...)`/
+`self.options[...]` call in `discohash_ng.py` - all five are present and
+documented. Renamed `pi-plugin/config.toml.example` to
+`pi-plugin/config.toml`.
+
+`hashbot/.env.example` is intentionally kept as `.env.example`, not
+renamed - it's a dotenv template for the standalone off-pi Discord bot
+(not a pwnagotchi `config.toml`), and this repo's `.gitignore` excludes
+real `.env` files from being committed. A real `.env` (with real
+secrets) is still required locally; `.env.example` is the trackable
+template for it. `hashbot.py` upstream (`itsdarklikehell/pwnagotchi-plugins/hashbot.py`)
+reads its Discord token/guild/channel via `os.getenv()` with no
+committed sample at all - `.env.example` documents the real variables
+(`DISCORD_TOKEN`, `HASH_CHANNEL_ID`, `AUTHORIZED_USER_ID`,
+`PI_SSH_HOST`, `PI_SSH_PORT`, `PI_SSH_USER`, `PI_SSH_KEY_PATH`,
+`PI_HANDSHAKE_DIR`) against what `hashbot.py` actually consumes.

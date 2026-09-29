@@ -79,7 +79,7 @@ outgrow this later, we can revisit.
 1. Copy `handshakes_dl_ng.py` into your custom plugins folder
    (`custom_plugins` in `config.toml`, typically
    `/etc/pwnagotchi/custom-plugins/`).
-2. Add the block from `config.toml.example` to
+2. Add the block from `config.toml` to
    `/etc/pwnagotchi/config.toml`.
 3. Restart pwnagotchi:
    ```
