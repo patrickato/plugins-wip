@@ -1,0 +1,34 @@
+# BanthexNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.banthex_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# Register at https://banthex.de/index.php/register/, then generate a key
+# at https://banthex.de/index.php/wpa-psk-auditor/
+api_key = "your-banthex-api-key-here"
+api_url = "https://banthex.de/wpa/"
+
+# APs matching any of these (case-insensitive, alphanumeric-only match)
+# are never uploaded. Leave empty to upload everything captured.
+whitelist = []
+
+# If true, periodically downloads a potfile of cracked passwords back to
+# your handshake folder as banthex.cracked.potfile.
+download_results = true
+download_check_interval_hours = 1
+
+# Timeouts (seconds) - the original hardcoded both at 30 with no way to
+# change them.
+upload_timeout = 30
+download_timeout = 30
+
+# How many times to retry an upload that fails before giving up on that
+# handshake for the rest of this run (it will be retried again after a
+# restart). The original retried forever - once - meaning any single
+# transient failure permanently blacklisted a handshake until the whole
+# plugin reloaded.
+max_upload_attempts = 3

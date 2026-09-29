@@ -1,0 +1,39 @@
+# HashesPwnagotchiNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.hashespwnagotchi_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED <<<
+# Create an account at https://hashes.pw and get your API key from your
+# account settings there.
+api_key = "your-hashes-pw-api-key-here"
+
+# >>> USER INPUT REQUIRED <<< (confirm this is still the right endpoint
+# when you sign up - hashes.pw may version its API)
+api_url = "https://hashes.pw/api/v1"
+
+# APs matching any of these (case-insensitive, alphanumeric-only match,
+# same matching rule this fork's own remove_whitelisted() uses) are never
+# uploaded. Leave empty to upload everything captured.
+whitelist = []
+
+# How many hours to wait between startup batch-conversion passes (the
+# scan that catches any older captures that were never converted). Omit
+# this entirely to run the batch scan on every restart instead.
+# interval = 24
+
+# Timeouts (seconds) so a corrupt capture or a hung connection can't
+# block the plugin indefinitely - the original had neither.
+hcxpcapngtool_timeout = 60
+upload_timeout = 30
+
+# How many times to retry an upload that fails before giving up on that
+# handshake for the rest of this run (it will be retried again after a
+# restart). The original retried forever - once - meaning any single
+# transient failure permanently blacklisted a handshake until the whole
+# plugin reloaded.
+max_upload_attempts = 3
+upload_retry_delay = 5
