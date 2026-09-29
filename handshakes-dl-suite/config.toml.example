@@ -1,0 +1,13 @@
+# HandshakesDLNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.handshakes_dl_ng]
+enabled = true
+
+# How many of the newest captures to show/zip at once. Raise this if you
+# have more captures than this and want to see/download older ones from
+# the web UI; the search box only filters within whatever is currently
+# shown, so a very large number here can make the page slow to render.
+max_results = 200
