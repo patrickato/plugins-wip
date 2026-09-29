@@ -9,9 +9,9 @@ positioning behaviour (including the negative-x-from-right-edge
 convention) is carried over unchanged. See NOTES.md for the full
 rationale.
 
-Naming note: the plugin FILE is named `mad_hatterNG.py` (capital NG, no
+Naming note: the plugin FILE is named `MadHatterNG.py` (capital NG, no
 underscore) per an explicit request. Its config section is
-`[main.plugins.mad_hatterNG]` - matching the file's exact basename,
+`[main.plugins.MadHatterNG]` - matching the file's exact basename,
 NOT snake_case (`mad_hatter_ng`). This is a verified framework fact,
 not a stylistic choice: `pwnagotchi/plugins/__init__.py` registers
 every plugin under `loaded[<file basename, exact case, ".py" dropped>]`
@@ -22,7 +22,7 @@ under that SAME key - a class body's `__name__ = "..."` assignment
 (as the original mad_hatter.py also had) does NOT override
 `type.__name__` in Python and has zero effect on this lookup, confirmed
 empirically. A config section spelled `mad_hatter_ng` for a file named
-`mad_hatterNG.py` would never even appear in the `enabled` list, so the
+`MadHatterNG.py` would never even appear in the `enabled` list, so the
 plugin would silently never load at all - not a merge/options bug, a
 total no-load. See NOTES.md for the full writeup, including what to do
 if you'd rather use a snake_case config section instead.
@@ -178,7 +178,7 @@ LIION_OCV_CURVE = (
 
 STATE_FILE = "/root/.mad_hatter_ng_state.json"
 # Previous-generation state files, read once (read-only) so switching from
-# mad_hatter.py to mad_hatterNG.py doesn't reset cycle-count/draw history.
+# mad_hatter.py to MadHatterNG.py doesn't reset cycle-count/draw history.
 LEGACY_NG_NONE = None
 LEGACY_STATE_FILE = "/root/.mad_hatter_state.json"
 LEGACY_CYCLE_FILE = "/root/.mad_hatter_cycle_count"
@@ -1277,9 +1277,9 @@ class MadHatterNG(plugins.Plugin):
     # NOTE: this attribute is cosmetic only - Python does not let a class
     # body's `__name__ = ...` override `type.__name__` (confirmed
     # empirically), and the real framework registers/looks up this plugin
-    # by its FILE's basename ("mad_hatterNG", exact case) regardless of
+    # by its FILE's basename ("MadHatterNG", exact case) regardless of
     # what's written here. See the module docstring's naming note.
-    __name__ = "mad_hatterNG"
+    __name__ = "MadHatterNG"
     __author__ = "AlienMajik (original mad_hatter.py), feature-upgrade rebuild"
     __version__ = "3.0.0"
     __license__ = "GPL3"
@@ -2048,7 +2048,7 @@ class MadHatterNG(plugins.Plugin):
                 self._diag["progress"] = 100
 
     def _suggested_config(self, reading):
-        lines = ["[main.plugins.mad_hatterNG]", "enabled = true",
+        lines = ["[main.plugins.MadHatterNG]", "enabled = true",
                  'ups_type = "auto"', "charging_gpio = -1"]
         if reading.get("cells", 1) > 1:
             lines.append("battery_cells = %d" % reading["cells"])
@@ -2188,7 +2188,7 @@ class MadHatterNG(plugins.Plugin):
 
 
 # ---------------------------------------------------------------------------
-# Web UI served at /plugins/mad_hatterNG (the plugin's real registered name
+# Web UI served at /plugins/MadHatterNG (the plugin's real registered name
 # is its file basename - see the module docstring's naming note)
 # ---------------------------------------------------------------------------
 

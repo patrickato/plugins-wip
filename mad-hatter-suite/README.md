@@ -31,15 +31,15 @@ explicitly for that reason - see "Requirements & dependencies" below.
    shutdown-imminent, once per crossing - not spammed every poll.
    Off by default (`notify_on_threshold = false`).
 2. **Trend history + graph.** A bounded, persisted log of voltage/SoC/
-   current samples, viewable at `/plugins/mad_hatterNG/history` (an
+   current samples, viewable at `/plugins/MadHatterNG/history` (an
    HTML page with a dependency-free inline-SVG sparkline and a table)
-   or as raw JSON at `/plugins/mad_hatterNG/history.json`.
+   or as raw JSON at `/plugins/MadHatterNG/history.json`.
 3. **Drain-rate / activity correlation.** Best-effort correlation
    against `timer-suite`'s per-handshake CSV, splitting the recent
    drain rate into "active epochs" vs "idle" and showing both
    alongside the existing flat mAh/current time estimate on the
    `/history` page.
-4. **Config sanity check.** `/plugins/mad_hatterNG/sanity` cross-checks
+4. **Config sanity check.** `/plugins/MadHatterNG/sanity` cross-checks
    your configured options against what was actually auto-detected on
    the I2C bus (mismatched `battery_cells`, a zero/negative
    `shunt_ohms`, a `charging_gpio` that's also in `reserved_gpios`,
@@ -72,17 +72,17 @@ background polling thread - is the same design as `mad_hatter.py`.
 
 ## Install
 
-1. Copy `mad_hatterNG.py` into your custom plugins folder. **The
-   filename must stay exactly `mad_hatterNG.py`** (capital NG, no
+1. Copy `MadHatterNG.py` into your custom plugins folder. **The
+   filename must stay exactly `MadHatterNG.py`** (capital NG, no
    underscore) - see "A naming gotcha" below for why this matters.
 2. Add the block from `config.toml` to `/etc/pwnagotchi/config.toml`.
-   **The section header must be exactly `[main.plugins.mad_hatterNG]`**
+   **The section header must be exactly `[main.plugins.MadHatterNG]`**
    - again, see "A naming gotcha".
 3. If you were running the original `mad_hatter.py`, remove or disable
    it first (`enabled = false` under its own `[main.plugins.mad_hatter]`
    section, or delete the file) - the two plugins would otherwise both
    try to talk to the same I2C chip and both draw a UI element.
-   `mad_hatterNG.py` automatically migrates cycle-count/draw-estimate
+   `MadHatterNG.py` automatically migrates cycle-count/draw-estimate
    history from the original's state file on first load, so you don't
    lose that.
 4. Restart pwnagotchi:
@@ -92,13 +92,13 @@ background polling thread - is the same design as `mad_hatter.py`.
 
 ### A naming gotcha (read this before you rename anything)
 
-The plugin file is named `mad_hatterNG.py` per an explicit request -
+The plugin file is named `MadHatterNG.py` per an explicit request -
 capital NG, no underscore, unlike every other suite in this repo. This
 fork's plugin loader registers and looks up a plugin (both whether it's
 "enabled" at all, and its options table) by the plugin **file's exact
 basename**, case included - NOT by any name written inside the Python
 class. That means the config section has to be
-`[main.plugins.mad_hatterNG]`, matching the file, not the more
+`[main.plugins.MadHatterNG]`, matching the file, not the more
 conventional-looking `mad_hatter_ng`. If the section name and the file
 name don't match exactly, the plugin silently never loads at all - no
 error, it just never appears as enabled. See NOTES.md for the full,
@@ -116,7 +116,7 @@ original's negative-x-means-"from the right edge" convention.
 
 ## Webhook pages
 
-All served under `/plugins/mad_hatterNG/`:
+All served under `/plugins/MadHatterNG/`:
 
 | Path | What it shows |
 |---|---|
@@ -131,12 +131,12 @@ All served under `/plugins/mad_hatterNG/`:
 
 | Symptom | Likely cause |
 |---|---|
-| Plugin never appears as loaded at all | Check the config section is spelled exactly `[main.plugins.mad_hatterNG]` (capital NG) - see "A naming gotcha" above. |
+| Plugin never appears as loaded at all | Check the config section is spelled exactly `[main.plugins.MadHatterNG]` (capital NG) - see "A naming gotcha" above. |
 | `NO UPS` on screen | No supported chip responded on the I2C bus - check wiring/`i2c_bus`, and check `dmesg`/`i2cdetect -y 1`. The plugin retries every 60s. |
 | SoC% jumps ~15% right when you plug in a charger | This is the exact bug the IR-compensation/smoothing in `SocEstimator` exists to prevent - if you still see it, check `internal_resistance` is set reasonably for your pack (default 0.12 ohm/cell). |
 | Current always reads ~0 on an INA219 board | Check `shunt_ohms` matches your board's real shunt resistor (0.1 for the Waveshare UPS 3S HAT) - the `/sanity` page flags an obviously-wrong (<=0) value, but not a plausible-but-wrong one. |
 | Current sign is backwards (charging shows as draining or vice versa) | Set `invert_current = true`. |
-| `notify_on_threshold` is on but nothing ever arrives | Check `/plugins/mad_hatterNG/status` and the pwnagotchi log for `no notification backend available/loaded` - it means neither `apprise-notify-suite` nor `discord-suite` is loaded/configured, or `notify_backend` is pinned to one that isn't. |
+| `notify_on_threshold` is on but nothing ever arrives | Check `/plugins/MadHatterNG/status` and the pwnagotchi log for `no notification backend available/loaded` - it means neither `apprise-notify-suite` nor `discord-suite` is loaded/configured, or `notify_backend` is pinned to one that isn't. |
 | `/history` always says "n/a" for active/idle drain rate | `timer_csv_path` doesn't point at a real file (default `/etc/pwnagotchi/timer_ng.csv`, matching `timer-suite`'s own default) - this is optional/best-effort, everything else on the page still works. |
 | Charging GPIO refused at boot with a "belongs to..." log line | That pin is already claimed by the display or another onboard function - pick a different `charging_gpio`, or leave it at `-1` (the default) to use current/voltage-based detection instead. |
 

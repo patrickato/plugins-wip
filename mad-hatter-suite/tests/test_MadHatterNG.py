@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, "/home/claude/jayofelony/pwnagotchi")
 
 import pwnagotchi.plugins  # noqa: E402
-import mad_hatterNG as mod  # noqa: E402
+import MadHatterNG as mod  # noqa: E402
 
 # on_webhook uses flask.jsonify for the status/history.json/diagnose/report
 # routes, which needs a real Flask application context - same as the real
@@ -102,7 +102,7 @@ def make_plugin(**opts):
 
 check(
     "MadHatterNG registers with the real pwnagotchi.plugins loader",
-    "mad_hatterNG" in pwnagotchi.plugins.loaded,
+    "MadHatterNG" in pwnagotchi.plugins.loaded,
 )
 check(
     "MadHatterNG is a real pwnagotchi.plugins.Plugin subclass",
@@ -110,9 +110,9 @@ check(
 )
 check(
     "the real framework registration key is the FILE's basename "
-    "('mad_hatterNG'), not the class body's __name__ attribute - verified "
+    "('MadHatterNG'), not the class body's __name__ attribute - verified "
     "against the real loader (see the module docstring's naming note)",
-    pwnagotchi.plugins.loaded["mad_hatterNG"].__class__.__module__ == "mad_hatterNG",
+    pwnagotchi.plugins.loaded["MadHatterNG"].__class__.__module__ == "MadHatterNG",
 )
 
 # --- __defaults__ merge pattern is preserved from mad_hatter.py --------------

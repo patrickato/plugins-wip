@@ -1,24 +1,24 @@
 # MadHatterNG - add this block to /etc/pwnagotchi/config.toml
 #
 # This fork's plugin loader does NOT read a plugin's __defaults__ - every
-# option below must be set here explicitly (mad_hatterNG.py works around
+# option below must be set here explicitly (MadHatterNG.py works around
 # this itself by merging __defaults__ in on_loaded, but the shipped block
 # below still spells everything out so it's all visible/editable in one
 # place, matching this repo's convention).
 #
-# IMPORTANT - the section name below is [main.plugins.mad_hatterNG], with
-# a capital NG, matching the plugin FILE's exact basename (mad_hatterNG.py).
+# IMPORTANT - the section name below is [main.plugins.MadHatterNG], with
+# a capital NG, matching the plugin FILE's exact basename (MadHatterNG.py).
 # This is not a style choice: this fork's loader
 # (pwnagotchi/plugins/__init__.py) registers and looks up every plugin -
 # both whether it's "enabled" at all, and its options table - by the
 # plugin file's basename, verbatim, case included. A section spelled
-# mad_hatter_ng (snake_case) for a file named mad_hatterNG.py would never
+# mad_hatter_ng (snake_case) for a file named MadHatterNG.py would never
 # even show up in the framework's "enabled" list, so the plugin would
 # silently never load - not an options bug, a total no-load. See
 # NOTES.md for the full verified writeup (including what to change here
 # if you'd rather rename the file itself to mad_hatter_ng.py instead).
 
-[main.plugins.mad_hatterNG]
+[main.plugins.MadHatterNG]
 enabled = true
 
 # ---------------------------------------------------------------------

@@ -30,7 +30,7 @@ user-approved features on top.
   `shunt_ohms`; PiSugar 2's two's-complement-with-a-sign-bit voltage
   decode at 0xA2/0xA3; PiSugar 2 Pro's simpler unsigned decode at
   0x64/0x65; PiSugar 3's big-endian millivolt read at 0x22/0x23. None
-  of this was touched - see `mad_hatterNG.py`'s test suite for
+  of this was touched - see `MadHatterNG.py`'s test suite for
   spot-checks against known-good encoded register values for each.
 - **The `ups_type` alias table**, including `"waveshare": "ina219"`,
   and the INA219-vs-INA226/230/237/238/260 manufacturer-ID/die-ID
@@ -70,7 +70,7 @@ user-approved features on top.
 ## The naming decision - a verified framework fact, not just a style
 ## note
 
-The task asked for the plugin file to be named exactly `mad_hatterNG.py`
+The task asked for the plugin file to be named exactly `MadHatterNG.py`
 (capital NG, no underscore - unlike every other suite in this repo,
 which uses `_ng.py`), with the config section as
 `main.plugins.mad_hatter_ng` (snake_case), reasoning that TOML keys
@@ -81,7 +81,7 @@ real cloned `jayofelony/pwnagotchi` fork rather than assumed:
 
 1. **TOML doesn't actually require snake_case.** A bare TOML key can
    contain letters, digits, underscores, and dashes in any case -
-   `mad_hatterNG` is perfectly valid TOML on its own. That specific
+   `MadHatterNG` is perfectly valid TOML on its own. That specific
    part of the original reasoning doesn't hold up.
 2. **More importantly: the real loader doesn't use a "config
    namespace" separate from the file name at all.** In
@@ -105,25 +105,25 @@ real cloned `jayofelony/pwnagotchi` fork rather than assumed:
 
    Concretely: I ran the REAL `load_from_file()` against this file in
    this project's cloned framework and confirmed
-   `pwnagotchi.plugins.loaded` ends up keyed `"mad_hatterNG"` (capital
+   `pwnagotchi.plugins.loaded` ends up keyed `"MadHatterNG"` (capital
    NG, matching the filename) - never `"mad_hatter_ng"`.
 
    **Consequence:** a config section spelled `[main.plugins.mad_hatter_ng]`
-   for a file named `mad_hatterNG.py` would never even appear in the
+   for a file named `MadHatterNG.py` would never even appear in the
    framework's `enabled` list. The plugin would not partially work or
    silently use defaults - it would **never load at all**, with no
    error anywhere.
 
    Given that, this rebuild ships `config.toml` with the section
-   spelled `[main.plugins.mad_hatterNG]` - matching the file's real,
+   spelled `[main.plugins.MadHatterNG]` - matching the file's real,
    verified registration key - rather than the `mad_hatter_ng` spelling
    originally asked for, which would have shipped a config that
    silently never enables the plugin. The Python **class** is still
    named `MadHatterNG` and the **file** is still named exactly
-   `mad_hatterNG.py`, per the explicit request; only the config
+   `MadHatterNG.py`, per the explicit request; only the config
    section's spelling was corrected to what the verified framework
    mechanism actually requires. This is called out prominently in both
-   `mad_hatterNG.py`'s module docstring and `config.toml`'s header
+   `MadHatterNG.py`'s module docstring and `config.toml`'s header
    comment, and in the README's "A naming gotcha" section, so it isn't
    a silent deviation.
 
@@ -131,7 +131,7 @@ real cloned `jayofelony/pwnagotchi` fork rather than assumed:
    wanted, the fix is to rename the FILE to `mad_hatter_ng.py` and
    update `config.toml`'s section to match - the two must always agree
    exactly, capitalization included. That's a rename, not a code
-   change - none of `mad_hatterNG.py`'s logic depends on its own
+   change - none of `MadHatterNG.py`'s logic depends on its own
    filename anywhere except the two `_suggested_config`/module-docstring
    strings that print the config section as user-facing text.
 
@@ -164,7 +164,7 @@ above) and calls that internal method directly, guarded three ways:
    log and skip.
 3. Anything else raises -> caught, logged, skipped.
 
-None of these ever crash `mad_hatterNG`'s own poll loop - "if the
+None of these ever crash `MadHatterNG`'s own poll loop - "if the
 configured/detected backend plugin isn't loaded, log and skip
 gracefully, never crash" was the explicit requirement, and this covers
 both "not loaded" and "loaded but not actually able to send" (a
@@ -199,11 +199,11 @@ same atomic write-to-tempfile-then-`os.replace()` pattern the original
 already uses for its own state file, on the same 60-second cadence as
 that state save, plus on `on_unload`.
 
-`/plugins/mad_hatterNG/history` renders it as an HTML page: two
+`/plugins/MadHatterNG/history` renders it as an HTML page: two
 dependency-free inline-SVG sparklines (`_svg_sparkline` - a plain
 `<polyline>`, no charting library, no external request) for SoC% and
 voltage, a table of the most recent 200 points, and the active/idle
-drain-rate line from feature 3. `/plugins/mad_hatterNG/history.json`
+drain-rate line from feature 3. `/plugins/MadHatterNG/history.json`
 returns the same points as raw JSON for anyone who wants to graph it
 themselves externally.
 
@@ -240,7 +240,7 @@ calculation at all.
 
 `sanity_checks(options, ups)` returns a flat list of `{level, text}`
 entries (`ok`/`warn`/`fail`/`info`), rendered at
-`/plugins/mad_hatterNG/sanity`. What it checks, and why each one was
+`/plugins/MadHatterNG/sanity`. What it checks, and why each one was
 picked - all inspired by validation the original *already* does
 defensively during backend selection, extended into an explicit report
 rather than just a log line:
@@ -269,7 +269,7 @@ rather than just a log line:
 
 ## Testing
 
-60 checks in `tests/test_mad_hatterNG.py`, all passing, run against the
+60 checks in `tests/test_MadHatterNG.py`, all passing, run against the
 real cloned `jayofelony/pwnagotchi` framework, the real `flask`
 library (with a real `Flask` app context pushed, since `on_webhook`'s
 `jsonify()` calls need one outside of an actual request), and the
@@ -328,7 +328,7 @@ real `pwnagotchi.plugins` loader. Covers:
 
 Run with (from this directory):
 ```
-python3 -m pytest tests/test_mad_hatterNG.py -v
+python3 -m pytest tests/test_MadHatterNG.py -v
 ```
 (or `pytest`, if your environment's `pytest` binary is on a different
 interpreter than the one with `flask`/`Pillow`/etc. installed, point
@@ -362,8 +362,8 @@ disproportionately valuable compared to the rest of the audit:
   look sensible against genuine pwnagotchi activity (not just the
   synthetic fixtures in the test suite).
 - **Config section naming** - the naming-gotcha fix above (shipping
-  `[main.plugins.mad_hatterNG]`) was verified against this project's
+  `[main.plugins.MadHatterNG]`) was verified against this project's
   cloned framework source and by actually running `load_from_file()`
-  against `mad_hatterNG.py` in that framework; it has not been
+  against `MadHatterNG.py` in that framework; it has not been
   confirmed against a live `pwnagotchi.service` restart on real
   hardware picking the plugin up from `config.toml`.
