@@ -1,0 +1,13 @@
+# DisplayVersionNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.display_version_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the element. Leave both commented out (or
+# absent) for the default, (185, 110).
+# position_x = 185
+# position_y = 110

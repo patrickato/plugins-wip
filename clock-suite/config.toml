@@ -1,0 +1,27 @@
+# ClockNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.clock_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the date element. Leave both commented out
+# (or absent) for the default, (100, 0).
+# date_position_x = 100
+# date_position_y = 0
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the time element. Leave both commented out
+# (or absent) for the default, (100, 95).
+# time_position_x = 100
+# time_position_y = 95
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# strftime format strings for the date/time elements. Default is
+# "%m/%d/%y" (e.g. "09/29/26") and "%I:%M%p" (12-hour, e.g. "07:14AM").
+# For a 24-hour clock, try time_format = "%H:%M". An invalid format
+# string falls back to these defaults rather than crashing.
+# date_format = "%m/%d/%y"
+# time_format = "%I:%M%p"

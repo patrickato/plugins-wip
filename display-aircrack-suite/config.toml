@@ -1,0 +1,26 @@
+# DisplayAircrackNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.display_aircrack_ng]
+enabled = true
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Screen position of the element. Leave both commented out (or
+# absent) for the default, (ui.width() // 2 - 10, 0).
+# position_x = 10
+# position_y = 0
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# How often (in seconds) to actually re-check whether aircrack-ng is
+# running. Default is 3. The original checked on every single UI
+# render tick; invalid values (zero, negative, non-numeric) fall back
+# to the default rather than crashing or reverting to that behavior.
+# check_interval = 3
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Text shown when aircrack-ng is / isn't running. Defaults replace
+# the original's bare "(1)"/"(0)".
+# running_text = "AC:ON"
+# stopped_text = "AC:OFF"
