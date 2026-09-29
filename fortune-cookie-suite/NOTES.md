@@ -62,3 +62,11 @@ list falling back to `DEFAULT_FORTUNES` instead of crashing
 - No real-device test against a live e-paper display or an actually
   installed `fortune` binary - `subprocess.run` is mocked for the
   command-path tests.
+
+## Original config preserved
+
+A real original config file for `fortune_cookie.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/fortune_cookie.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

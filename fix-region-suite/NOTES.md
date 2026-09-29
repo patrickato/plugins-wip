@@ -358,3 +358,11 @@ Covers:
   documented above - a small, explicitly-approximate rectangle-based
   lookup, not verified against a real GPS fix in this sandbox (no GPS
   hardware available here either).
+
+## Original config preserved
+
+A real original config file for `fix_region.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/fix_region.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

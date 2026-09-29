@@ -70,3 +70,11 @@ without crashing.
   an actual e-paper display driver.
 - Countdown-to-next-birthday was explicitly declined this round, not
   built.
+
+## Original config preserved
+
+A real original config file for `birthday.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/birthday.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

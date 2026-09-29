@@ -487,3 +487,11 @@ HTTP layer itself) and the real `pwnagotchi.plugins` loader:
   be set to match (this rebuild makes that a config option instead of
   a hardcoded assumption specifically so it can be corrected without
   editing the plugin file).
+
+## Original config preserved
+
+A real original config file for `handshaker.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/handshaker.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

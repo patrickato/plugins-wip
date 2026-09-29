@@ -57,3 +57,11 @@ both with and without a prior `on_ui_setup` call.
 
 - No real-hardware verification yet of on-screen position - see
   README's "Still open" section.
+
+## Original config preserved
+
+A real original config file for `display-aircrack.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/display-aircrack.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

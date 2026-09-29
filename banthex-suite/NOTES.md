@@ -101,3 +101,11 @@ Checked every `self.options.get(...)`/`self.options[...]` call in
 `download_check_interval_hours`, `upload_timeout`, `download_timeout`,
 `max_upload_attempts` are all present and documented. Renamed from
 `config.toml.example` to `config.toml`.
+
+## Original config preserved
+
+A real original config file for `banthex-de.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/banthex-de.toml` (a live-looking API key in it was redacted to `REDACTED_SEE_UPSTREAM_HAD_REAL_VALUE`). Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

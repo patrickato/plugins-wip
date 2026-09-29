@@ -159,3 +159,11 @@ hardcoded or missing entirely). Checked every `self.options.get(...)`/
 `upload_timeout`, `max_upload_attempts`, `upload_retry_delay` are all
 present and documented. Renamed from `config.toml.example` to
 `config.toml`.
+
+## Original config preserved
+
+A real original config file for `hashespwnagotchi.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/hashespwnagotchi.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

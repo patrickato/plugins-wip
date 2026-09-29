@@ -119,3 +119,11 @@ reverting and removing a tracked tweak.
 - No real-hardware verification yet of the live-edit page's usability
   on an actual 3.5" TFT browser session - see README's "Still open"
   section.
+
+## Original config preserved
+
+A real original config file for `tweak_view.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/tweak_view.json`. Preserved verbatim in this suite's own folder as
+`config.original.json`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

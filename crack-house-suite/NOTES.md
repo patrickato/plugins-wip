@@ -138,3 +138,11 @@ replaced by them; and no crash on a genuine first-ever run where
 - No real-hardware verification yet of on-screen position or the
   `iwconfig` text-parsing approach - see README's "Still open"
   section.
+
+## Original config preserved
+
+A real original config file for `crack_house.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/crack_house.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

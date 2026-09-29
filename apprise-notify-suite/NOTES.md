@@ -95,3 +95,11 @@ webhook handler not crashing.
 
 - No real end-to-end test against a live notification service (Discord
   webhook, ntfy topic, etc.) - see README's "Still open" section.
+
+## Original config preserved
+
+A real original config file for `apprise-notify.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/apprise-notify.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

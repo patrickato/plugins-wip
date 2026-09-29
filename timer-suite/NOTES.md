@@ -126,3 +126,11 @@ directly without setting `.options` first.
   cap in practice - see README's "Still open" section.
 - On-screen element placement on the user's actual 3.5" TFT screen
   hasn't been visually checked yet.
+
+## Original config preserved
+
+A real original config file for `timer.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/timer.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

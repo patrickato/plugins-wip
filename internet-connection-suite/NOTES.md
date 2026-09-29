@@ -87,3 +87,11 @@ host/port/timeout rather than anything hardcoded.
 
 - No real-hardware verification yet of probe latency/reliability on
   the user's actual network - see README's "Still open" section.
+
+## Original config preserved
+
+A real original config file for `internet-connection.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/internet-connection.toml (covers internet-connection.py only - no config was ever found/tracked for the merged-in wanmon.py or internet-conection.py)`. Preserved verbatim in this suite's own folder as
+`internet-connection.config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

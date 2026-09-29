@@ -51,3 +51,11 @@ default instead of propagating the exception; clean `on_unload`; and
 
 - No real-hardware verification yet of on-screen position - see
   README's "Still open" section.
+
+## Original config preserved
+
+A real original config file for `clock.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/clock.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

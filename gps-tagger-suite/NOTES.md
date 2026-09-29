@@ -166,3 +166,11 @@ call in `gps_tagger_ng.py`. All options the code actually reads
 are present and documented in `config.toml`. Renamed from
 `config.toml.example` to `config.toml` - it's a complete, ready-to-edit
 config, not a stub.
+
+## Original config preserved
+
+A real original config file for `privacy-nightmare.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/privacy-nightmare.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

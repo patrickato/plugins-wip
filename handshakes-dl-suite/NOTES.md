@@ -110,3 +110,11 @@ original always showed every capture with no limit). Checked
 `self.options.get("max_results")` in `handshakes_dl_ng.py` - it's
 present and documented in `config.toml`. Renamed from
 `config.toml.example` to `config.toml`.
+
+## Original config preserved
+
+A real original config file for `handshakes-dl-hashie.py` was found (exact match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/handshakes-dl-hashie.toml`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

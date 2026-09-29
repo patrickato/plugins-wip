@@ -327,3 +327,13 @@ python3 -m pytest tests/test_bluetooth_recon_ng.py -v
   in this sandbox (no practical offline way to do that here) - treat
   as a best-effort convenience, not a certified-accurate source, and
   correct/extend via `oui_extra_path` as needed.
+
+## Original configs preserved
+
+Real original config files for both merged-in plugins were found (exact
+match) at `itsdarklikehell/pwnagotchi-plugins/configs/blemon_plugin.toml`
+and `itsdarklikehell/pwnagotchi-plugins/configs/bluetoothsniffer.toml`.
+Preserved verbatim in this suite's own folder as
+`blemon_plugin.config.original.toml` and
+`bluetoothsniffer.config.original.toml`, per the project's standing
+config-preservation requirement.

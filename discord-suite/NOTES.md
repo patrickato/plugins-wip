@@ -64,3 +64,11 @@ without crashing; clean shutdown (worker thread actually stops,
 
 - No real-device test against a live Discord webhook - see README's
   "Still open" section.
+
+## Original config preserved
+
+A real original config file for `Discord v3.0.1` was found (partial/closest-sibling match) at
+`itsdarklikehell/pwnagotchi-plugins/configs/discord.toml (closest-sibling/partial match, not an exact-match find for this exact fork)`. Preserved verbatim in this suite's own folder as
+`config.original.toml`, per the project's standing config-preservation requirement,
+for reference/troubleshooting if the rebuilt `config.toml` above ever
+needs comparing against the source.

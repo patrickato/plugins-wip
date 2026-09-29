@@ -190,3 +190,14 @@ committed sample at all - `.env.example` documents the real variables
 (`DISCORD_TOKEN`, `HASH_CHANNEL_ID`, `AUTHORIZED_USER_ID`,
 `PI_SSH_HOST`, `PI_SSH_PORT`, `PI_SSH_USER`, `PI_SSH_KEY_PATH`,
 `PI_HANDSHAKE_DIR`) against what `hashbot.py` actually consumes.
+
+## Original config preserved
+
+A real original config file for `discohash.py` was found (exact match)
+at `itsdarklikehell/pwnagotchi-plugins/configs/discohash.toml` (only
+`discohash.py` had a documented real config find - no real config was
+ever tracked for `discoBoss.py` or the flamebarke-fork `hashbot.py`
+also merged into this suite). Preserved verbatim as
+`pi-plugin/discohash.config.original.toml`, alongside the rebuilt
+`pi-plugin/config.toml`, per the project's standing config-preservation
+requirement.
