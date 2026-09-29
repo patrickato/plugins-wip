@@ -44,6 +44,30 @@ browser, not on the device's own small screen.
 3. **Dependency-declaration bug**: declared `pandas` as a pip
    dependency, never imported anywhere in the file - dropped.
 
+## What's added (beyond the original bug fixes)
+
+1. **Last-updated timestamp on the webhook page.** There was previously
+   no way to tell, just from looking at the page, whether the graph
+   was showing fresh data or had gone stale (e.g. wifi scanning
+   stalled). A new `meta` webhook endpoint reports when
+   `on_unfiltered_ap_list` last actually stored data, and the page now
+   shows it under the graph, polled on the same interval as the graph
+   data itself.
+2. **Already-cracked networks are marked on the graph.** APs whose
+   hostname appears in CrackHouseNG's merged cracked-network list
+   (read from its `saving_path` file - there's no other shared-state
+   mechanism between plugins on this fork) are now shown with a star
+   marker and a `[CRACKED]` label instead of the plain square used for
+   everything else, so a glance at the graph shows which nearby
+   networks are already cracked. Matching is case-insensitive, the
+   same as CrackHouseNG's own case-insensitive matching addition.
+   Configurable via `crack_house_saving_path`; set to `""` to disable
+   if you're not running CrackHouseNG.
+3. **Configurable poll interval.** The page's JavaScript polled for
+   new graph data every 5000ms, hardcoded. Now set with
+   `poll_interval_ms`; an invalid value (zero, negative, non-numeric)
+   falls back to the same 5000ms default.
+
 ## What's kept
 
 - The whole graph-building approach and its plotly-based webhook page,

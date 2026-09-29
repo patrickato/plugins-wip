@@ -59,6 +59,27 @@ resistive touch, ILI9486/ADS7846), jayofelony 64-bit pwnagotchi image.
    at the `Popen()` call (for both `evtest` and `ts_print`) and
    setting `needsAptPackages` there.
 
+## What's added (beyond the original bug fixes)
+
+1. **A real webhook status page.** `on_webhook` used to just log that
+   it was hit and return nothing at all - visiting the plugin's
+   webhook page showed a blank response, with no way to check on the
+   touchscreen's state remotely. It now returns an HTML page reporting
+   whether the reader thread is running, whether a touchscreen process
+   is currently active, when the last touch was seen, and any apt
+   packages (`evtest`/`libts-bin`) still pending install.
+2. **Long-press detection.** There was previously no way for another
+   plugin to react to a deliberately-held touch specifically - only
+   the existing `touch_press`/`touch_release`/`touch_move` events,
+   none of which distinguish a quick tap from a long hold. A new
+   `longpress_seconds` option (default 0.6s) sets how long a press
+   must be held; if a release follows a press held at least that long,
+   an additional `touch_longpress` event is dispatched right alongside
+   the normal `touch_release` one - using the exact same
+   `plugins.one()`-targeted-vs-`plugins.on()`-broadcast dispatch logic
+   as every other event here, so a button's `event_handler` still
+   controls who gets notified.
+
 ## What's kept
 
 - The whole touch-dispatch design: press/move/release detection,

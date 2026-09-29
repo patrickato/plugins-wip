@@ -138,6 +138,10 @@ class Touch_Button(Widget):
 
 DEFAULTS = {
     "enabled": False,
+    # ADDED: how long (in seconds) a press must be held before release
+    # also dispatches a "touch_longpress" event, in addition to the
+    # normal "touch_release" one.
+    "longpress_seconds": 0.6,
 }
 
 
@@ -185,6 +189,10 @@ class TouchUING(plugins.Plugin):
         self.touch_elements = {}
         self.needsAptPackages = None
         self.buttonCurrentZone = None
+        # ADDED: last-touch timestamp and in-progress press start time,
+        # used by the new webhook status page and long-press detection.
+        self._last_touch = None
+        self._press_start = None
 
         logging.debug("[TouchUING] plugin init")
 
@@ -292,7 +300,26 @@ class TouchUING(plugins.Plugin):
             logging.info("[TouchUING] Handler: %s", repr(e))
 
     def on_webhook(self, path, request):
+        # ADDED: a real status page - the original just logged that the
+        # webhook was hit and returned nothing at all, which left no way
+        # to check on the touchscreen's state remotely.
         logging.info("[TouchUING] webhook pressed")
+
+        thread_alive = bool(self._ts_thread and self._ts_thread.is_alive())
+        ts_active = self.touchscreen is not None
+        last_touch = self._last_touch or "never"
+        missing_packages = (
+            ", ".join(self.needsAptPackages) if self.needsAptPackages else "none"
+        )
+
+        return (
+            "<html><body><h1>TouchUING</h1>"
+            f"<p>Reader thread running: {thread_alive}</p>"
+            f"<p>Touchscreen process active: {ts_active}</p>"
+            f"<p>Last touch seen: {last_touch}</p>"
+            f"<p>Missing apt packages: {missing_packages}</p>"
+            "</body></html>"
+        )
 
     def on_loaded(self):
         logging.info("[TouchUING] plugin loaded")
@@ -374,6 +401,8 @@ class TouchUING(plugins.Plugin):
         logging.info("[TouchUING] PT: %s: %s", repr(tpoint), repr(depth))
 
         touch_data = {"point": tpoint, "pressure": depth}
+        # ADDED: last-touch timestamp, surfaced on the webhook status page.
+        self._last_touch = time.strftime("%H:%M:%S")
 
         ui_elements = self._view._state._state
         touch_element = None
@@ -381,13 +410,26 @@ class TouchUING(plugins.Plugin):
             filter(lambda x: hasattr(ui_elements[x], "state"), ui_elements.keys())
         )
         logging.info("[TouchUING] Touchable: %s", repr(touch_elements))
+        # ADDED: whether this release follows a press held at least
+        # longpress_seconds - drives the extra "touch_longpress" event
+        # dispatch below.
+        is_longpress = False
         try:
             if int(depth) > 0:
                 command = "touch_move" if self._beingTouched else "touch_press"
+                if command == "touch_press":
+                    # ADDED: mark the start of a new press for long-press
+                    # duration timing on release.
+                    self._press_start = time.time()
                 self._beingTouched = True
             elif int(depth) == 0:
                 command = "touch_release"
                 self._beingTouched = False
+                if self._press_start is not None:
+                    held = time.time() - self._press_start
+                    if held >= self._opt("longpress_seconds"):
+                        is_longpress = True
+                self._press_start = None
             else:
                 command = None
 
@@ -436,15 +478,37 @@ class TouchUING(plugins.Plugin):
                         touch_element,
                         touch_data,
                     )
+                    if is_longpress:
+                        # ADDED: long-press detection, dispatched as its
+                        # own event alongside the normal touch_release,
+                        # so a plugin that only cares about a deliberate
+                        # long-press doesn't have to reimplement
+                        # press-duration timing itself.
+                        plugins.one(
+                            button.event_handler,
+                            "touch_longpress",
+                            self,
+                            self._view,
+                            touch_element,
+                            touch_data,
+                        )
                 else:
                     logging.info(
                         "UI_Element %s Command: %s, handler: %s, data: %s",
                         touch_element, command, None, repr(touch_data),
                     )
                     plugins.on(command, self, self._view, touch_element, touch_data)
+                    if is_longpress:
+                        plugins.on(
+                            "touch_longpress", self, self._view, touch_element, touch_data
+                        )
             else:
                 logging.debug("Touch Command: %s, data: %s", command, repr(touch_data))
                 plugins.on(command, self, self._view, touch_element, touch_data)
+                if is_longpress:
+                    plugins.on(
+                        "touch_longpress", self, self._view, touch_element, touch_data
+                    )
 
     # button handlers to cycle through touch areas and click (not implemented yet)
     def okButtonPress(self, button):

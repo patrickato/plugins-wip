@@ -72,6 +72,28 @@ class CrackHouseNG(plugins.Plugin):
 
     def on_loaded(self):
         entries = set()
+
+        # ADDED: also seed from our own previous saving_path output, so
+        # a network cracked in a past run stays known even if the
+        # source `files` are later rotated, cleared, or a wpa-sec
+        # export simply isn't re-downloaded - the original (and the
+        # first version of this rebuild) rebuilt the list from `files`
+        # alone on every load, silently losing history whenever a
+        # source file's own retention policy dropped an old entry.
+        saving_path = self._opt("saving_path")
+        try:
+            with open(saving_path) as f:
+                for line in f:
+                    line = line.rstrip()
+                    if ":" in line:
+                        entries.add(line)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logging.debug(
+                "[CrackHouseNG] couldn't read previous %s: %s", saving_path, e
+            )
+
         for file_path in self._opt("files"):
             try:
                 entries.update(self._parse_file(file_path))
@@ -214,7 +236,13 @@ class CrackHouseNG(plugins.Plugin):
             rssi = network.get("rssi")
             for entry in self._crack_menu:
                 cracked_host, _, password = entry.partition(":")
-                if hostname and hostname == cracked_host:
+                # ADDED: case-insensitive comparison - the original (and
+                # this rebuild's first version) compared hostnames with
+                # a plain "==", so a network seen as "MyLab" would never
+                # match a potfile entry saved as "mylab" or "MYLAB",
+                # even though it's obviously the same network. The
+                # matched entry's original casing is still what's shown.
+                if hostname and hostname.lower() == cracked_host.lower():
                     count += 1
                     if best_rssi is None or (rssi is not None and rssi > best_rssi):
                         best_rssi = rssi

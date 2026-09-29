@@ -44,13 +44,46 @@ surfaced something more fundamental underneath it.
   `pwnagotchi.mesh.wifi` module instead of the nonexistent
   `pwnagotchi.wifi`; initializes `self.channel = None` in `__init__`.
 
+## What's added, on top of the bug fixes (user-approved)
+
+Suggested after the initial rebuild, and all 3 approved for building:
+
+1. **Last-updated timestamp** (`_last_update`, set in
+   `on_unfiltered_ap_list`, served via a new `meta` webhook path). The
+   page previously had no way to signal staleness at all - a stalled
+   wifi scan and a perfectly current graph looked identical.
+2. **Cracked-node cross-referencing** (`_cracked_hostnames`,
+   `create_graph`'s new `cracked` parameter). Reads CrackHouseNG's
+   `saving_path` file directly - the only shared-state mechanism
+   available between plugins on this fork, since there's no plugin
+   registry or shared cache to query instead. `create_graph` is a
+   `@staticmethod` with `@lru_cache`, so `cracked` is passed as a
+   `frozenset` (hashable, required for the cache key) rather than a
+   plain `set`. Matching is done on `.lower()` on both sides, mirroring
+   CrackHouseNG's own case-insensitive-matching addition, so the two
+   plugins agree on what counts as "the same network" even if their
+   two data sources disagree on casing.
+3. **Configurable poll interval** (`poll_interval_ms`, substituted into
+   `TEMPLATE` via a `__POLL_INTERVAL_MS__` placeholder token and a
+   plain string `.replace()` at render time - not Jinja's own
+   `{{ }}`/`.format()`, since the template is already full of its own
+   literal `{` characters from Jinja block syntax and JS object
+   literals, which would collide with `str.format()`). A second
+   endpoint (`meta`) is polled on the same interval as the graph data.
+
+Both new numeric options (`poll_interval_ms`) go through a small
+validating helper (`_poll_interval_ms`) that falls back to the
+original hardcoded default on anything non-numeric or `<= 0`, the same
+defensive pattern used for MoreUptimeNG's `cycle_interval` earlier in
+this batch.
+
 ## Testing
 
-13 tests in `tests/test_viz_ng.py`, all passing against the real
+26 tests in `tests/test_viz_ng.py`, all passing against the real
 cloned `jayofelony/pwnagotchi` framework for everything except plotly
-itself: real plugin registration; the module importing
-`freq_to_channel` successfully at all (directly proving the import
-fix, since the original import would have raised
+itself. The original 13 cover: real plugin registration; the module
+importing `freq_to_channel` successfully at all (directly proving the
+import fix, since the original import would have raised
 `ModuleNotFoundError` at collection time); `self.channel` being
 initialized; the update webhook not raising `AttributeError` before
 any channel-hop event has fired (directly reproducing and confirming
@@ -61,6 +94,17 @@ via the two real hooks (confirmed real via
 `None` channel and a real one, including with no data at all;
 per-node color memoization; the "/" webhook path rendering its
 template; and unknown paths correctly 404ing.
+13 new tests cover the additions above: `_last_update` starting unset
+and being set by `on_unfiltered_ap_list`; the `meta` webhook reporting
+that timestamp (and "never" before any data has arrived); a configured
+`poll_interval_ms` appearing in the rendered page's source with the
+placeholder fully substituted; an invalid `poll_interval_ms` falling
+back to the default; `_cracked_hostnames` correctly reading
+CrackHouseNG's `saving_path` file; a cracked AP showing up
+`[CRACKED]`/starred in `create_graph`'s output; that cross-referencing
+matching case-insensitively; and a missing or disabled
+(`crack_house_saving_path=""`) file yielding no matches instead of
+crashing.
 
 `plotly` itself wasn't installable in this build's sandboxed network
 (pip couldn't reach a distribution for it), so

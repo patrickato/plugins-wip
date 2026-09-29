@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -140,6 +141,91 @@ try:
 except Exception:
     ok = False
 check("on_unload doesn't crash with nothing set up yet", ok)
+
+# --- ADDED: webhook returns a real status page instead of nothing ---
+p = make_plugin()
+html = p.on_webhook("", None)
+check("webhook returns real HTML, not None (the original returned nothing)", html is not None and "TouchUING" in html)
+check("webhook status page reports 'never' when no touch has been seen yet", "Last touch seen: never" in html)
+check("webhook status page reports the reader thread isn't running when unset", "Reader thread running: False" in html)
+check("webhook status page reports no touchscreen process when unset", "Touchscreen process active: False" in html)
+check("webhook status page reports no missing packages by default", "Missing apt packages: none" in html)
+
+# --- ADDED: webhook status page reflects real state once it exists ---
+p = make_plugin()
+p.needsAptPackages = ["evtest", "libts-bin"]
+p.touchscreen = mock.Mock()
+alive_thread = mock.Mock()
+alive_thread.is_alive.return_value = True
+p._ts_thread = alive_thread
+p._last_touch = "12:34:56"
+html = p.on_webhook("", None)
+check("webhook status page reflects a running reader thread", "Reader thread running: True" in html)
+check("webhook status page reflects an active touchscreen process", "Touchscreen process active: True" in html)
+check("webhook status page reflects the last touch timestamp", "Last touch seen: 12:34:56" in html)
+check("webhook status page lists missing apt packages", "evtest" in html and "libts-bin" in html)
+
+# --- ADDED: process_touch records a last-touch timestamp ---
+p = make_plugin()
+button4 = mod.Touch_Button(position=(0, 0, 10, 10), momentary=False, state=False)
+fake_state4 = mock.Mock()
+fake_state4._state = {"mybutton": button4}
+fake_state4._changes = {}
+fake_view4 = mock.Mock()
+fake_view4._state = fake_state4
+p._view = fake_view4
+check("_last_touch starts unset", p._last_touch is None)
+p.process_touch([5, 5], 100)
+check("process_touch records a last-touch timestamp", p._last_touch is not None)
+
+# --- ADDED: a long-held press dispatches an extra touch_longpress event on release ---
+p = make_plugin(longpress_seconds=0.05)
+button5 = mod.Touch_Button(position=(0, 0, 10, 10), momentary=False, state=False)
+fake_state5 = mock.Mock()
+fake_state5._state = {"mybutton": button5}
+fake_state5._changes = {}
+fake_view5 = mock.Mock()
+fake_view5._state = fake_state5
+p._view = fake_view5
+with mock.patch("touch_ui_ng.plugins.on") as on_mock:
+    p.process_touch([5, 5], 100)  # press
+    time.sleep(0.08)  # hold past the configured 0.05s threshold
+    p.process_touch([5, 5], 0)  # release
+    dispatched_events = [call.args[0] for call in on_mock.call_args_list]
+check("a press held past longpress_seconds dispatches touch_release", "touch_release" in dispatched_events)
+check("a press held past longpress_seconds also dispatches touch_longpress", "touch_longpress" in dispatched_events)
+
+# --- ADDED: a short press does NOT dispatch touch_longpress ---
+p = make_plugin(longpress_seconds=5)
+button6 = mod.Touch_Button(position=(0, 0, 10, 10), momentary=False, state=False)
+fake_state6 = mock.Mock()
+fake_state6._state = {"mybutton": button6}
+fake_state6._changes = {}
+fake_view6 = mock.Mock()
+fake_view6._state = fake_state6
+p._view = fake_view6
+with mock.patch("touch_ui_ng.plugins.on") as on_mock:
+    p.process_touch([5, 5], 100)  # press
+    p.process_touch([5, 5], 0)  # immediate release, well under 5s
+    dispatched_events = [call.args[0] for call in on_mock.call_args_list]
+check("a short press does not dispatch touch_longpress", "touch_longpress" not in dispatched_events)
+
+# --- ADDED: touch_longpress is targeted via plugins.one for a button with an event_handler, like other events ---
+p = make_plugin(longpress_seconds=0.05)
+button7 = mod.Touch_Button(position=(0, 0, 10, 10), momentary=False, state=False, event_handler="some_other_plugin")
+fake_state7 = mock.Mock()
+fake_state7._state = {"mybutton": button7}
+fake_state7._changes = {}
+fake_view7 = mock.Mock()
+fake_view7._state = fake_state7
+p._view = fake_view7
+with mock.patch("touch_ui_ng.plugins.one") as one_mock, mock.patch("touch_ui_ng.plugins.on") as on_mock:
+    p.process_touch([5, 5], 100)
+    time.sleep(0.08)
+    p.process_touch([5, 5], 0)
+    dispatched_one_events = [call.args[1] for call in one_mock.call_args_list]
+check("touch_longpress is targeted via plugins.one when event_handler is set", "touch_longpress" in dispatched_one_events)
+check("touch_longpress does not also broadcast via plugins.on for a targeted button", not on_mock.called)
 
 
 print()

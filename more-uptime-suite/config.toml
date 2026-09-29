@@ -17,3 +17,18 @@ override = false
 # top-right-ish corner (ui.width() - 58, 12).
 # position_x = 10
 # position_y = 12
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# How many seconds each state is shown before cycling to the next one.
+# Default is 5. Invalid values (zero, negative, non-numeric) fall back
+# to the default rather than crashing or spinning.
+# cycle_interval = 5
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Which states to cycle through, and in what order. Valid entries are
+# "IN" (time since this plugin loaded), "PR" (pwnagotchi process
+# uptime), "UP" (system uptime). Any subset/order is valid - list just
+# one to stop cycling entirely. Default is all three, in this order.
+# An empty list, or a list with no valid entries, falls back to the
+# default.
+# states = ["IN", "PR", "UP"]

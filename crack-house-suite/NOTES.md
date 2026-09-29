@@ -79,23 +79,59 @@ stop, before even reaching the bug the audit table already knew about.
   code easier to unit-test in isolation (which is exactly how the
   tests below exercise it).
 
+## What's added, on top of the bug fixes (user-approved)
+
+Suggested after the initial rebuild, and approved for building
+(options #2 and #3 of 3 suggested):
+
+1. **Case-insensitive hostname matching** (`on_wifi_update`). The
+   comparison between a live AP's hostname and a potfile entry's
+   hostname was a plain `==`, so `"MyLab"` over the air would never
+   match `"mylab"` in a potfile - a real risk since wpa-sec exports,
+   manually-entered `.cracked` rows, and live scan ESSIDs don't
+   reliably agree on casing for the same network. Now compared with
+   `.lower()` on both sides; the potfile's stored casing is still what
+   gets displayed, so this only widens what counts as a match, it
+   doesn't change what's shown.
+2. **Cross-reboot persistence via `saving_path`** (`on_loaded`).
+   Previously, `_crack_menu` was rebuilt from `files` alone on every
+   load - so if a source file got rotated, cleared, or a wpa-sec
+   export just wasn't freshly re-downloaded before a reboot, any crack
+   that file had contributed vanished from the list even though it
+   had already been learned once. `on_loaded` now also reads its own
+   previous `saving_path` output (the merged file it writes at the end
+   of every `on_loaded` run) as an additional source, merged in before
+   `files` are parsed. A network cracked once stays known from then on,
+   independent of what the currently-configured `files` happen to
+   contain on any given boot. (Suggestion #1 from the same batch -
+   redacting passwords before display - was not approved and is not
+   included.)
+
 ## Testing
 
-16 tests in `tests/test_crack_house_ng.py`, all passing against the
-real cloned `jayofelony/pwnagotchi` framework: real plugin
-registration; `on_loaded` skipping a missing file without crashing
-and still writing the (now empty) `saving_path` backup; correct
-`.potfile` and `.cracked` parsing; `on_ui_setup` succeeding against a
-bare UI object with none of the original's `is_waveshare_*`-style
-methods at all (proving the fatal bug is actually gone, not just
-avoided in a specific case); the stats element correctly
-included/excluded by `display_stats`; configured `position_x`/
-`position_y` being honored; clean unload even when the stats element
-was never created; nearest-cracked-network selection by RSSI; the
-configured `iface` actually being used in the `iwconfig` call; not
-re-scanning while already associated; the "nothing nearby" fallback
-using the plugin's own data instead of a hardcoded external file; and
-the webhook rendering without crashing on an empty plugin.
+20 tests in `tests/test_crack_house_ng.py`, all passing against the
+real cloned `jayofelony/pwnagotchi` framework. The original 16 cover:
+real plugin registration; `on_loaded` skipping a missing file without
+crashing and still writing the (now empty) `saving_path` backup;
+correct `.potfile` and `.cracked` parsing; `on_ui_setup` succeeding
+against a bare UI object with none of the original's
+`is_waveshare_*`-style methods at all (proving the fatal bug is
+actually gone, not just avoided in a specific case); the stats element
+correctly included/excluded by `display_stats`; configured
+`position_x`/`position_y` being honored; clean unload even when the
+stats element was never created; nearest-cracked-network selection by
+RSSI; the configured `iface` actually being used in the `iwconfig`
+call; not re-scanning while already associated; the "nothing nearby"
+fallback using the plugin's own data instead of a hardcoded external
+file; and the webhook rendering without crashing on an empty plugin.
+4 new tests cover the additions above: case-insensitive matching
+(an AP reporting `"mylab"` matches a `"MyLab:hunter2"` potfile entry,
+with the original casing preserved in the result); persistence across
+a simulated reboot (a `saving_path` file written by a prior run is
+picked up by `on_loaded` even when `files` is empty/missing);
+persisted entries merging with newly-parsed ones rather than being
+replaced by them; and no crash on a genuine first-ever run where
+`saving_path` doesn't exist yet.
 
 ## Still open
 

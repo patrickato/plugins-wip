@@ -6,5 +6,19 @@
 [main.plugins.viz_ng]
 enabled = true
 
-# No other options - this plugin has none, same as the original.
 # Visit http://pwnagotchi.local:8080/plugins/viz_ng/ to see the graph.
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# How often the page polls for new graph/meta data, in milliseconds.
+# Default is 5000. Invalid values (zero, negative, non-numeric) fall
+# back to the default rather than crashing or flooding the webhook.
+# poll_interval_ms = 5000
+
+# >>> USER INPUT REQUIRED (optional) <<<
+# Path to CrackHouseNG's merged cracked-network file (its own
+# `saving_path` option), used to mark already-cracked networks on the
+# graph with a star symbol and a "[CRACKED]" label. Defaults to
+# CrackHouseNG's own default saving_path - only change this if you've
+# also changed CrackHouseNG's saving_path, or set to "" to disable
+# cross-referencing entirely (e.g. if you're not running CrackHouseNG).
+# crack_house_saving_path = "/root/handshakes/crack_house_ng.potfile"

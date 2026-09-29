@@ -155,6 +155,55 @@ except Exception:
     webhook_ok = False
 check("webhook renders without crashing on an empty plugin", webhook_ok)
 
+# --- ADDED: on_wifi_update matches hostnames case-insensitively ---
+plugin = make_plugin(files=[], saving_path=p("saved12.potfile"))
+plugin.on_loaded()
+plugin._crack_menu = ["MyLab:hunter2"]
+with mock.patch("crack_house_ng.os.popen") as popen:
+    popen.return_value.read.return_value = "wlan0  IEEE 802.11  ESSID:off/any  Not-Associated"
+    # AP reports the hostname in different case than the potfile entry.
+    plugin.on_wifi_update(mock.Mock(), [{"hostname": "mylab", "rssi": -50}])
+check(
+    "on_wifi_update matches a cracked hostname case-insensitively",
+    plugin._best_crack == ("MyLab", "hunter2"),
+)
+check(
+    "on_wifi_update keeps the potfile's original casing when displaying a case-insensitive match",
+    plugin._best_crack is not None and plugin._best_crack[0] == "MyLab",
+)
+
+# --- ADDED: on_loaded persists previously-known cracks across reboots via saving_path ---
+persisted_path = p("persisted.potfile")
+with open(persisted_path, "w") as f:
+    f.write("OldReboot:pass123\n")
+# Next "boot": configured `files` is empty/missing entirely, but the
+# plugin's own previous saving_path output should still be picked up.
+plugin = make_plugin(files=[p("does_not_exist_either.potfile")], saving_path=persisted_path)
+plugin.on_loaded()
+check(
+    "on_loaded seeds from its own previous saving_path output when files are empty/missing",
+    "OldReboot:pass123" in plugin._crack_menu,
+)
+
+# --- ADDED: saving_path persistence merges with newly-parsed files, doesn't just replace them ---
+with open(p("new_run.potfile"), "w") as f:
+    f.write("aabbccddeeff:112233445566:FreshLab:newpass\n")
+plugin = make_plugin(files=[p("new_run.potfile")], saving_path=persisted_path)
+plugin.on_loaded()
+check(
+    "on_loaded merges previously-persisted entries with newly-parsed files",
+    "OldReboot:pass123" in plugin._crack_menu and "FreshLab:newpass" in plugin._crack_menu,
+)
+
+# --- ADDED: on_loaded doesn't crash when saving_path doesn't exist yet (first-ever run) ---
+plugin = make_plugin(files=[], saving_path=p("never_written_before.potfile"))
+try:
+    plugin.on_loaded()
+    first_run_ok = True
+except Exception:
+    first_run_ok = False
+check("on_loaded doesn't crash on a first-ever run with no prior saving_path file", first_run_ok)
+
 
 print()
 if failures:

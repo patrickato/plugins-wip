@@ -52,6 +52,26 @@ pwnagotchi image.
    could show stale or wrong data, or nothing at all, independent of
    the plugin's own settings.
 
+## What's added (beyond the original bug fixes)
+
+1. **Case-insensitive hostname matching.** `on_wifi_update` used to
+   compare an access point's hostname to a potfile entry with a plain
+   `==`, so a network seen over the air as `"MyLab"` would never match
+   an entry saved as `"mylab"` or `"MYLAB"` - even though wpa-sec
+   exports, `.cracked` files, and live scan results don't reliably
+   agree on ESSID casing. Matching is now case-insensitive; the
+   potfile's own original casing is still what's displayed.
+2. **Cracked list now survives across reboots even if the source
+   files don't.** `on_loaded` used to rebuild `_crack_menu` from
+   `files` alone on every load - if a source file was rotated,
+   cleared, or a wpa-sec export just wasn't re-downloaded before a
+   reboot, any crack it once contributed silently disappeared even
+   though it was already learned. `on_loaded` now also reads its own
+   previous `saving_path` output first and merges those entries in,
+   so a cracked network stays known once it's been seen, regardless
+   of what the currently-configured `files` happen to contain on any
+   given boot.
+
 ## What's kept
 
 - The core idea and both original potfile/`.cracked` parsing formats.

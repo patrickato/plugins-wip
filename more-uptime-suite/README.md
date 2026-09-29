@@ -39,9 +39,27 @@ pwnagotchi image.
    exception.
 3. **Unused `scapy` dependency declaration**, dropped.
 
+## What's added (beyond the original bug fixes)
+
+1. **Configurable cycle interval.** How long each state is shown
+   before cycling to the next one was hardcoded to 5 seconds. Now set
+   with `cycle_interval` (seconds); an invalid value (zero, negative,
+   non-numeric) falls back to the same 5-second default rather than
+   crashing or spinning through states every update.
+2. **Configurable state subset/order.** The original always cycled
+   all three states (instance uptime, process uptime, system uptime)
+   in a fixed `IN -> PR -> UP` order, with no way to change either.
+   The `states` option now takes a list of any subset of `"IN"`,
+   `"PR"`, `"UP"`, in whatever order you want - list just one to stop
+   cycling entirely and show a single fixed state, or reorder/drop
+   ones you don't care about. An empty list, or one with no valid
+   entries, falls back to the original default order.
+
 ## What's kept
 
-- The three-way cycle (instance/process/system uptime) and its timing.
+- The three-way cycle (instance/process/system uptime) and its timing
+  as the *default* behavior - both are now configurable rather than
+  hardcoded (see "What's added" above).
 - The `override` mode that hijacks the stock "uptime" element's label
   instead of adding a new one - still a direct reach into
   `ui._state._state`, same as the original, wrapped in the same

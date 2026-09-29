@@ -47,18 +47,50 @@ that defeats its one configurable option. Small, self-contained fix.
   TOML array under the same key name would have broken the original's
   `.split(",")` call outright.
 
+## What's added, on top of the bug fixes (user-approved)
+
+Suggested after the initial rebuild, and both approved for building
+(#1 and #2 of 2 suggested):
+
+1. **Configurable `cycle_interval`.** The 5-second interval between
+   state changes was a hardcoded literal in `on_ui_update`. Pulled out
+   into an option, validated by a new `_cycle_interval()` helper that
+   falls back to the same 5-second default on anything non-numeric or
+   `<= 0`, so a typo in `config.toml` can't turn this into a tight
+   busy-loop advancing the state every single update.
+2. **Configurable `states` list.** The three-way `IN -> PR -> UP`
+   cycle and its fixed order used to be baked directly into
+   `on_ui_update`'s `if self._state == 2 / elif == 1 / else` chain.
+   That's now driven by a `states` option (a list of any subset/order
+   of `"IN"`/`"PR"`/`"UP"`), validated by a new `_states()` helper.
+   `on_ui_update` now looks up the current state's label from that
+   list instead of hardcoded numeric branches, and dispatches on the
+   label string (`"UP"`/`"PR"`/else `"IN"`) rather than a magic index.
+   An empty list, or one with no recognized entries, logs a warning
+   and falls back to the original default order rather than raising
+   `ZeroDivisionError` (from `% len(states)` on an empty list) or
+   silently freezing on the wrong label.
+
 ## Testing
 
-10 tests in `tests/test_more_uptime_ng.py`, all passing against the
-real cloned `jayofelony/pwnagotchi` framework: real plugin
-registration; the element being created even when a custom position
-IS configured (directly reproducing and confirming the fix for the
-original bug); the default position fallback; `override=true`
-correctly skipping its own element and instead relabeling the stock
-"uptime" element; the three-state cycle producing a labeled value;
-`on_ui_update` not crashing (and not masking the real error with a
-second `NameError`) when `/proc/uptime` is unreadable; and clean
-unload behavior in both `override` states.
+20 tests in `tests/test_more_uptime_ng.py`, all passing against the
+real cloned `jayofelony/pwnagotchi` framework. The original 10 cover:
+real plugin registration; the element being created even when a
+custom position IS configured (directly reproducing and confirming
+the fix for the original bug); the default position fallback;
+`override=true` correctly skipping its own element and instead
+relabeling the stock "uptime" element; the three-state cycle
+producing a labeled value; `on_ui_update` not crashing (and not
+masking the real error with a second `NameError`) when `/proc/uptime`
+is unreadable; and clean unload behavior in both `override` states.
+10 new tests cover the additions above: a configured `cycle_interval`
+being honored (state advances once, then holds through an immediate
+second call); an invalid `cycle_interval` (`0`) falling back to the
+default instead of crashing or spinning; a single-entry `states` list
+locking the display to just that state across multiple cycles; a
+custom `states` order/subset being respected; and both an all-invalid
+and an empty `states` list falling back to the default instead of
+crashing (covering the `ZeroDivisionError` risk specifically).
 
 ## Still open
 

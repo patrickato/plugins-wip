@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -127,6 +128,77 @@ try:
 except Exception:
     unload_ok = False
 check("on_unload doesn't crash when override=true (nothing to remove)", unload_ok)
+
+# --- ADDED: configurable cycle_interval is honored instead of the hardcoded 5s ---
+p = make_plugin(override=False, cycle_interval=100)
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0  # force the very first advance
+before = p._state
+p.on_ui_update(ui)
+after_first = p._state
+# A long interval means the NEXT call (immediately after) must NOT advance again.
+p.on_ui_update(ui)
+after_second = p._state
+check("on_ui_update advances state once when _next has passed", after_first != before)
+check("a long configured cycle_interval prevents an immediate second advance", after_second == after_first)
+
+# --- ADDED: invalid cycle_interval falls back to the default rather than crashing/spinning ---
+p = make_plugin(override=False, cycle_interval=0)
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0
+try:
+    p.on_ui_update(ui)
+    invalid_interval_ok = p._next > time.time()
+except Exception:
+    invalid_interval_ok = False
+check("cycle_interval=0 falls back to the default instead of crashing or spinning", invalid_interval_ok)
+
+# --- ADDED: configurable states restricts which states are shown ---
+p = make_plugin(override=False, states=["UP"])
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0
+p.on_ui_update(ui)
+value = ui.values.get("more_uptime_ng")
+check("states=['UP'] only ever shows the UP state", value is not None and value.startswith("UP "))
+p._next = 0
+p.on_ui_update(ui)
+value2 = ui.values.get("more_uptime_ng")
+check("states=['UP'] keeps showing UP on subsequent cycles too (no other state to cycle to)", value2 is not None and value2.startswith("UP "))
+
+# --- ADDED: configurable states honors a custom order/subset ---
+p = make_plugin(override=False, states=["PR", "UP"])
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0  # advances _state from 0 to 1 -> states[1] == "UP"
+p.on_ui_update(ui)
+value = ui.values.get("more_uptime_ng")
+check("custom states=['PR', 'UP'] order is respected", value is not None and value.startswith("UP "))
+
+# --- ADDED: an empty/invalid states list falls back to the default IN/PR/UP instead of crashing ---
+p = make_plugin(override=False, states=["NOT_A_REAL_STATE"])
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0
+try:
+    p.on_ui_update(ui)
+    invalid_states_ok = "more_uptime_ng" in ui.values
+except Exception:
+    invalid_states_ok = False
+check("an all-invalid states list falls back to the default instead of crashing", invalid_states_ok)
+
+p = make_plugin(override=False, states=[])
+ui = FakeUI()
+p.on_ui_setup(ui)
+p._next = 0
+try:
+    p.on_ui_update(ui)
+    empty_states_ok = "more_uptime_ng" in ui.values
+except Exception:
+    empty_states_ok = False
+check("an empty states list falls back to the default instead of a ZeroDivisionError", empty_states_ok)
 
 
 print()

@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import time
 from functools import lru_cache
 from math import pi, cos, sin
 from threading import Lock
@@ -10,6 +11,21 @@ import plotly.graph_objects as go
 from flask import render_template_string, abort, jsonify
 
 import pwnagotchi.plugins as plugins
+
+# This fork's loader does NOT merge a plugin's __defaults__ into
+# self.options - every option must be read with a real fallback.
+DEFAULTS = {
+    "enabled": False,
+    # ADDED: how often the webhook page polls for new graph/meta data,
+    # in milliseconds. The original hardcoded this to 5000 in the
+    # page's own JavaScript.
+    "poll_interval_ms": 5000,
+    # ADDED: where to read CrackHouseNG's merged cracked-network list
+    # from, so already-cracked networks can be marked on the graph.
+    # Defaults to CrackHouseNG's own default saving_path. Set to an
+    # empty string to disable cross-referencing entirely.
+    "crack_house_saving_path": "/root/handshakes/crack_house_ng.potfile",
+}
 
 # FIXED: the original imported "from pwnagotchi.wifi import
 # freq_to_channel" - that module path does not exist anywhere on this
@@ -94,7 +110,20 @@ TEMPLATE = """
             }
         }
         loadGraphData();
-        setInterval(loadGraphData, 5000);
+        setInterval(loadGraphData, __POLL_INTERVAL_MS__);
+
+        function loadMetaData() {
+            $.ajax({
+                async: false,
+                url: '/plugins/viz/meta',
+                dataType: 'json',
+                success: function(data) {
+                    $('#lastUpdate').text(data.last_update || 'never');
+                }
+            });
+        }
+        loadMetaData();
+        setInterval(loadMetaData, __POLL_INTERVAL_MS__);
     });
 {% endblock %}
 
@@ -102,6 +131,7 @@ TEMPLATE = """
     <div class="chart" id="plot">
         Waiting for data...
     </div>
+    <p>Last updated: <span id="lastUpdate">never</span></p>
 {% endblock %}
 """
 
@@ -160,6 +190,61 @@ class VizNG(plugins.Plugin):
         # boot) raised an unhandled AttributeError, 500ing the request.
         self.channel = None
         self.lock = Lock()
+        # ADDED: tracks when on_unfiltered_ap_list last actually stored
+        # new data, surfaced on the webhook page so it's obvious at a
+        # glance whether the graph is stale.
+        self._last_update = None
+
+    def _opt(self, key):
+        # getattr rather than a direct self.options.get(...): the real
+        # framework always assigns self.options before any hook fires,
+        # but a plugin instance can legitimately exist without one yet
+        # (e.g. freshly constructed in a test), so this stays safe
+        # either way instead of raising AttributeError.
+        return getattr(self, "options", {}).get(key, DEFAULTS[key])
+
+    def _poll_interval_ms(self):
+        # ADDED: guard against a misconfigured (zero/negative/non-numeric)
+        # poll interval hammering the webhook with a busy-loop of AJAX
+        # calls, or a literal "0" landing straight in the page's HTML.
+        interval = self._opt("poll_interval_ms")
+        try:
+            interval = int(interval)
+            if interval <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            logging.warning(
+                "[VizNG] invalid poll_interval_ms %r, falling back to the "
+                "default (%s ms)", interval, DEFAULTS["poll_interval_ms"],
+            )
+            return DEFAULTS["poll_interval_ms"]
+        return interval
+
+    def _cracked_hostnames(self):
+        # ADDED: cross-references CrackHouseNG's own merged cracked-list
+        # file (there's no other shared-state mechanism for plugins on
+        # this fork) so already-cracked networks can be marked on the
+        # graph. Read fresh on every webhook hit rather than cached, so
+        # it always reflects CrackHouseNG's latest known list; this is a
+        # plain small text file read, not worth caching.
+        saving_path = self._opt("crack_house_saving_path")
+        if not saving_path:
+            return frozenset()
+        cracked = set()
+        try:
+            with open(saving_path) as f:
+                for line in f:
+                    hostname, _, _ = line.rstrip().partition(":")
+                    if hostname:
+                        cracked.add(hostname.lower())
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logging.debug(
+                "[VizNG] couldn't read crack_house_saving_path %s: %s",
+                saving_path, e,
+            )
+        return frozenset(cracked)
 
     def on_loaded(self):
         logging.info("[VizNG] plugin loaded")
@@ -181,7 +266,7 @@ class VizNG(plugins.Plugin):
 
     @staticmethod
     @lru_cache(maxsize=13)
-    def create_graph(data, channel=None):
+    def create_graph(data, channel=None, cracked=frozenset()):
         if not data:
             return "{}"
 
@@ -202,8 +287,14 @@ class VizNG(plugins.Plugin):
             x, y = abs(ap_data["rssi"]), freq_to_channel(ap_data["frequency"])
             node_x.append(x)
             node_y.append(y)
-            node_text.append(name)
-            node_symbols.append("square")
+            # ADDED: mark/color nodes that are already in CrackHouseNG's
+            # cracked list, cross-referenced case-insensitively to match
+            # CrackHouseNG's own case-insensitive matching addition -
+            # so "MyLab" is recognized whether the potfile has it as
+            # "MyLab", "mylab", or "MYLAB".
+            is_cracked = name.lower() in cracked
+            node_text.append(f"{name} [CRACKED]" if is_cracked else name)
+            node_symbols.append("star" if is_cracked else "square")
             node_sizes.append(15 + len(ap_data["clients"]) * 3)
             node_colors.append(color)
 
@@ -266,6 +357,9 @@ class VizNG(plugins.Plugin):
         with self.lock:
             data = sorted(data, key=lambda k: k["mac"])
             self.data = json.dumps(data)
+            # ADDED: last-updated timestamp, surfaced via the "meta"
+            # webhook path and shown on the page itself.
+            self._last_update = time.strftime("%Y-%m-%d %H:%M:%S")
 
     def on_channel_hop(self, agent, channel):
         with self.lock:
@@ -273,11 +367,24 @@ class VizNG(plugins.Plugin):
 
     def on_webhook(self, path, request):
         if not path or path == "/":
-            return render_template_string(TEMPLATE)
+            # ADDED: configurable poll interval substituted into the
+            # page's JavaScript, replacing the original's hardcoded
+            # 5000ms literal. Plain string replace (not Jinja/format)
+            # since the template is full of its own "{" characters.
+            html = TEMPLATE.replace(
+                "__POLL_INTERVAL_MS__", str(self._poll_interval_ms())
+            )
+            return render_template_string(html)
 
         if path == "update":
             with self.lock:
-                g = VizNG.create_graph(self.data, self.channel)
+                cracked = self._cracked_hostnames()
+                g = VizNG.create_graph(self.data, self.channel, cracked)
                 return jsonify(g)
+
+        if path == "meta":
+            # ADDED: last-updated timestamp endpoint, polled by the page.
+            with self.lock:
+                return jsonify({"last_update": self._last_update or "never"})
 
         abort(404)

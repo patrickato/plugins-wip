@@ -7,6 +7,12 @@
 enabled = true
 
 # >>> USER INPUT REQUIRED (optional) <<<
+# How long (in seconds) a press must be held before release also
+# dispatches a "touch_longpress" event, alongside the normal
+# "touch_release" one. Default is 0.6 seconds.
+# longpress_seconds = 0.6
+
+# >>> USER INPUT REQUIRED (optional) <<<
 # BCM pin numbers for optional physical buttons, if you have any wired
 # up alongside the touchscreen. Omit "gpios" entirely if you don't.
 # [main.plugins.touch_ui_ng.gpios]

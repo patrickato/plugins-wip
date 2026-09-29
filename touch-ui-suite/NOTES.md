@@ -82,9 +82,34 @@ verify a bigger rewrite against real hardware from here.
   readability - each button is still configured and guarded
   independently, with the exact same behavior as before.
 
+## What's added, on top of the bug fixes (user-approved)
+
+Suggested after the initial rebuild, and both approved for building:
+
+1. **A real webhook status page** (`on_webhook`). Previously just
+   logged and returned nothing - there was no way to check on the
+   plugin's state without SSHing in and reading logs. Now reports
+   whether `_ts_thread` is alive, whether `self.touchscreen` (the
+   `ts_print` subprocess) is currently set, the last-touch timestamp
+   (`_last_touch`, newly tracked in `process_touch`), and any pending
+   `needsAptPackages`.
+2. **Long-press detection** (`process_touch`, new `longpress_seconds`
+   option). A press's start time is now recorded the moment `command`
+   becomes `"touch_press"` (the transition from not-touched to
+   touched - not on every `"touch_move"` while already held); on the
+   matching `"touch_release"`, if the held duration meets
+   `longpress_seconds` (default 0.6s), an extra `"touch_longpress"`
+   event is dispatched immediately after the normal
+   `"touch_release"` one, through the exact same targeted-vs-broadcast
+   `plugins.one`/`plugins.on` logic already used for every other event
+   here - so a button's `event_handler` (or lack of one) controls
+   `touch_longpress` delivery exactly the same way it already controls
+   `touch_press`/`touch_release`/`touch_move`. This only adds a new
+   event; it does not change any existing button-state toggling logic.
+
 ## Testing
 
-18 tests in `tests/test_touch_ui_ng.py`, all passing against the real
+33 tests in `tests/test_touch_ui_ng.py`, all passing against the real
 cloned `jayofelony/pwnagotchi` framework (confirming `plugins.on` and
 `plugins.one`'s real signatures directly against
 `pwnagotchi/plugins/__init__.py`): real plugin registration;
@@ -101,6 +126,16 @@ binary now correctly setting `needsAptPackages` instead of the
 original's dead check; `init_gpio` wiring up exactly the configured
 buttons (and doing nothing when none are configured); and clean
 `on_unload` behavior with nothing set up yet.
+15 new tests cover the additions above: the webhook returning real
+HTML with sensible defaults (never/false/none) before anything has
+happened; the webhook correctly reflecting a running thread, an
+active touchscreen process, a real last-touch timestamp, and pending
+apt packages once those exist; `process_touch` recording
+`_last_touch`; a press held past `longpress_seconds` dispatching both
+`touch_release` and `touch_longpress`; a short press dispatching only
+`touch_release`; and `touch_longpress` correctly following the same
+`plugins.one`-targeted-vs-`plugins.on`-broadcast rule as every other
+event.
 
 Two Anthropic-provided dependency stand-ins were needed just to import
 and exercise this module in a sandbox with no real Raspberry Pi:
