@@ -1,0 +1,37 @@
+# InternetConnectionNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+
+[main.plugins.internet_connection_ng]
+enabled = true
+
+# Screen position of the "WWW: C"/"WWW: D" element. Leave both commented
+# out (or absent) to use the automatic default position (top center,
+# matching the original internet-connection.py's placement). TOML has
+# no null value, so "unset" - not 0 - is what means "auto" here;
+# uncomment and set real numbers to override.
+# position_x = 10
+# position_y = 0
+
+# Label text and the two single/short values shown when connected vs.
+# disconnected.
+label = "WWW"
+connected_value = "C"
+disconnected_value = "D"
+
+# If true, actively re-tests connectivity once per epoch (and once at
+# startup) with a quick TCP connect probe, so the icon can go back to
+# "disconnected" if the connection drops later in the session. If
+# false, the icon only ever turns on via the framework's own
+# `internet_available` event and will never turn back off once set -
+# this matches the original internet-connection.py's behavior exactly.
+active_recheck = true
+
+# Host/port used for the active re-check probe (a bare TCP connect,
+# not an HTTP request - no page is actually fetched). 8.8.8.8:53 (DNS)
+# is a reasonable default that doesn't depend on any particular
+# website being up.
+recheck_test_host = "8.8.8.8"
+recheck_test_port = 53
+recheck_timeout = 1.0
