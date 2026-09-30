@@ -42,6 +42,15 @@
   me! I am {age} old today!"`), shown in place of the normal age
   string when today matches the month+day of `born_at`. `{age}` is
   substituted with the current formatted age string.
+- On-screen position normalized to the repo-wide convention:
+  `position_x` / `position_y` are preferred and, via `_resolve_position()`,
+  fall back to the original `age_x_coord` / `age_y_coord` names (then to
+  `(0, 0)`) so older configs keep working. The Age and Birthday elements
+  are mutually exclusive, so one resolved pair covers whichever is shown.
+- `on_webhook` fixed to return an HTML body instead of `None`. Returning
+  `None` makes Flask raise a 500 on the bare index path
+  (`GET /plugins/birthday_ng/`); the body now reports the current
+  age/birth date (or "born_at unknown").
 - Declined this round: on-screen countdown to next birthday - not
   built.
 
@@ -62,7 +71,10 @@ the <1-year "days" vs "d" branch); `is_birthday_today` matching and
 non-matching dates; `birthday_message` substitution on the matching
 date; `on_ui_update` showing `"unknown"` when `born_at` is `None`
 (fallback file write itself failed); `on_ui_setup`/`on_unload` running
-without crashing.
+without crashing; `position_x`/`position_y` (and the legacy
+`age_x_coord`/`age_y_coord` fallback) landing on the drawn element; and
+`on_webhook` returning a non-None HTML body in both the known and
+unknown-`born_at` cases.
 
 ## Still open
 

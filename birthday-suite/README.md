@@ -49,6 +49,17 @@ Shows your Pwnagotchi's age (or birth date) on screen. Rebuilt from
   *does* get a real `born_at` later, it takes priority over the
   fallback file automatically (it's checked first, every load).
 
+- **Convention-named position options** - `position_x` / `position_y`
+  now set the on-screen spot for whichever element is shown (age or
+  birthday), matching the other NG suites. The original's
+  `age_x_coord` / `age_y_coord` names are still honored when
+  `position_x` / `position_y` are left unset, so existing configs keep
+  working unchanged. Default is `(0, 0)`, the original's own default.
+- **`on_webhook` now returns a real body.** The original returned
+  `None`, which makes Flask raise a 500 on the bare plugin index
+  (`GET /plugins/birthday_ng/`); it now serves a small status page with
+  the current age/birth date.
+
 No on-screen countdown-to-next-birthday feature was added - explicitly
 declined for this round.
 
@@ -56,7 +67,10 @@ declined for this round.
 
 See `config.toml`. `show_age` and `show_birthday` are mutually
 exclusive in practice (age wins if both are true, matching the
-original's if/elif); position via `age_x_coord`/`age_y_coord`.
+original's if/elif). Position is set via `position_x` / `position_y`
+(preferred, matching the other NG suites); the legacy
+`age_x_coord` / `age_y_coord` names still work when the preferred pair
+is left unset.
 
 ## Still open
 

@@ -38,6 +38,10 @@ efficiency/feature rebuild, not a bugfix one.
    `"(1)"`/`"(0)"`. Now `running_text`/`stopped_text`, defaulting to
    the clearer `"AC:ON"`/`"AC:OFF"`.
 4. **Dropped the unused `scapy` dependency declaration.**
+5. **`on_webhook` returns a real page.** The original returned `None`,
+   which makes Flask raise a 500 on the bare plugin index
+   (`GET /plugins/display_aircrack_ng/`); it now serves a small status
+   page showing the current running/stopped state.
 
 ## What's kept
 

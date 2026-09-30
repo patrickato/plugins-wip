@@ -103,6 +103,12 @@ category-by-category pass (Attack/Capture category, the cluster covering
   default 300s) instead of either spamming a line per event (the
   original, once fixed literally, would have) or silently doing
   nothing.
+- Both on-screen elements are now positionable: the GPS status
+  indicator via `status_position_x` / `status_position_y` (was hardcoded
+  `1, 76`) and the tagged-AP counter via `count_position_x` /
+  `count_position_y` (was hardcoded `122, 94`). A negative `*_position_x`
+  resolves from the right edge against `ui.width()`, matching the other
+  NG suites' convention. Defaults reproduce the original layout exactly.
 - `manage_gps` flag (default `False`): the original always tried to
   drive bettercap's `gps.device`/`gps.baudrate`/`gps on` itself whenever
   `gps_device` was set in its config, with zero awareness that this

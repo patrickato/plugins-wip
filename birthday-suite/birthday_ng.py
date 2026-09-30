@@ -38,6 +38,11 @@ class BirthdayNG(plugins.Plugin):
         "enabled": False,
         "show_age": True,
         "show_birthday": False,
+        # Preferred, convention-named position options. When either is left
+        # unset (None) the legacy age_x_coord / age_y_coord below are used, so
+        # existing configs keep working unchanged.
+        "position_x": None,
+        "position_y": None,
         "age_x_coord": 0,
         "age_y_coord": 0,
         # Shown on the actual anniversary of born_at (same month+day as
@@ -52,6 +57,16 @@ class BirthdayNG(plugins.Plugin):
     def _opt(self, key):
         return self.options.get(key, self.DEFAULTS[key])
 
+    def _resolve_position(self):
+        # Preferred convention: position_x / position_y. Fall back to the legacy
+        # age_x_coord / age_y_coord names for back-compat, then to (0, 0). The
+        # Age and Birthday elements are mutually exclusive, so one pair is enough.
+        px = self._opt("position_x")
+        py = self._opt("position_y")
+        x = int(px) if px is not None else int(self._opt("age_x_coord"))
+        y = int(py) if py is not None else int(self._opt("age_y_coord"))
+        return (x, y)
+
     def on_loaded(self):
         self.load_data(BRAIN_PATH)
         logging.info(f"[{self.__class__.__name__}] plugin loaded")
@@ -64,10 +79,7 @@ class BirthdayNG(plugins.Plugin):
                     color=BLACK,
                     label=" ♥ Age ",
                     value="",
-                    position=(
-                        int(self._opt("age_x_coord")),
-                        int(self._opt("age_y_coord")),
-                    ),
+                    position=self._resolve_position(),
                     label_font=fonts.Bold,
                     text_font=fonts.Medium,
                 ),
@@ -79,10 +91,7 @@ class BirthdayNG(plugins.Plugin):
                     color=BLACK,
                     label=" ♥ Born: ",
                     value="",
-                    position=(
-                        int(self._opt("age_x_coord")),
-                        int(self._opt("age_y_coord")),
-                    ),
+                    position=self._resolve_position(),
                     label_font=fonts.Bold,
                     text_font=fonts.Medium,
                 ),
@@ -201,3 +210,15 @@ class BirthdayNG(plugins.Plugin):
 
     def on_webhook(self, path, request):
         logging.info(f"[{self.__class__.__name__}] webhook pressed")
+        # Return a simple status page. Returning None makes Flask raise a 500 on
+        # the bare index path (GET /plugins/birthday_ng/), so always return a body.
+        if self.born_at is None:
+            body = "born_at unknown"
+        elif self._opt("show_age"):
+            body = "Age: " + self.format_age(self.calculate_age())
+        elif self._opt("show_birthday"):
+            born_date = datetime.datetime.fromtimestamp(self.born_at)
+            body = "Born: " + born_date.strftime("%b %d '%y")
+        else:
+            body = "BirthdayNG"
+        return "<html><body><h2>BirthdayNG</h2><p>%s</p></body></html>" % body

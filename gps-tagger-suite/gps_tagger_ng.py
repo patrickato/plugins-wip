@@ -230,6 +230,25 @@ class GPSTaggerNG(plugins.Plugin):
     # ------------------------------------------------------------------
     # UI
 
+    def _resolve_position(self, ui, x_key, y_key, default_x, default_y):
+        # This fork's loader does not merge __defaults__, so read each option
+        # with a real fallback. Negative x = pixels in from the right edge
+        # (repo-wide convention). Defaults preserve the original hardcoded spots.
+        try:
+            x = int(self.options.get(x_key, default_x))
+        except (TypeError, ValueError):
+            x = default_x
+        try:
+            y = int(self.options.get(y_key, default_y))
+        except (TypeError, ValueError):
+            y = default_y
+        if x < 0:
+            try:
+                x = int(ui.width()) + x
+            except Exception:
+                x = 0
+        return (x, y)
+
     def on_ui_setup(self, ui):
         ui.add_element(
             "pn_status",
@@ -237,7 +256,7 @@ class GPSTaggerNG(plugins.Plugin):
                 color=BLACK,
                 label="",
                 value="Active",
-                position=(1, 76),
+                position=self._resolve_position(ui, "status_position_x", "status_position_y", 1, 76),
                 label_font=fonts.Small,
                 text_font=fonts.Small,
             ),
@@ -248,7 +267,7 @@ class GPSTaggerNG(plugins.Plugin):
                 color=BLACK,
                 label="",
                 value="0",
-                position=(122, 94),
+                position=self._resolve_position(ui, "count_position_x", "count_position_y", 122, 94),
                 label_font=fonts.Small,
                 text_font=fonts.Small,
             ),

@@ -153,6 +153,19 @@ except Exception:
     unload_no_setup_ok = False
 check("on_unload doesn't crash when on_ui_setup never ran", unload_no_setup_ok)
 
+# --- ADDED: on_webhook returns a real body (never None -> Flask 500) ---
+p = make_plugin()
+_wh_body = p.on_webhook("/", None)
+check("on_webhook returns a non-None body (avoids Flask 500 on index)", _wh_body is not None)
+check("on_webhook body is HTML text", isinstance(_wh_body, str) and "<html" in _wh_body.lower())
+
+# It reflects the last known running state in the body.
+p = make_plugin(running_text="RUN", stopped_text="OFF")
+p._running = True
+check("on_webhook body reflects the running state", "RUN" in p.on_webhook("/", None))
+p._running = False
+check("on_webhook body reflects the stopped state", "OFF" in p.on_webhook("/", None))
+
 
 print()
 if failures:

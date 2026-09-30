@@ -35,6 +35,10 @@ trying to preserve the dead branches "just in case."
   or a configured `data_path`), same pattern as the original.
 - `on_webhook` now renders an actual status page (handshake count,
   new-networks count, title, streak) instead of a single log line.
+- The on-screen element is now positionable via `position_x` /
+  `position_y` (was hardcoded to `(0, 95)`). Negative `position_x`
+  resolves from the right edge against `ui.width()`, matching the
+  repo-wide convention used by the other NG suites.
 - No wifi-auto-connect, no treasure hunt, no blocking `input()`, no
   hardcoded telemetry server - all removed, none of it belongs in a
   background daemon plugin regardless of whether the original hooks

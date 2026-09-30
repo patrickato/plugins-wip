@@ -59,6 +59,12 @@ current title, and streak.
 See `config.toml`. State persists to a JSON file next to the plugin by
 default, or to a configured `data_path`.
 
+**On-screen position** is configurable via `position_x` / `position_y`
+(defaults `0, 95`, the original hardcoded spot). Following the repo-wide
+convention, a negative `position_x` is measured in pixels from the right
+edge of the display (resolved against `ui.width()` at setup time), so the
+element can be pinned to the right on any panel width.
+
 ## Still open
 
 - No real-device test against a live pwnagotchi capturing an actual

@@ -37,6 +37,11 @@ class WifiAdventuresNG(plugins.Plugin):
 
     DEFAULTS = {
         "enabled": False,
+        # On-screen position of the Adventures element. Defaults preserve the
+        # original hardcoded spot (0, 95). Negative x means "pixels in from the
+        # right edge," matching the repo-wide convention.
+        "position_x": 0,
+        "position_y": 95,
         # Handshakes needed to reach the next tier of the daily streak
         # target - kept purely cosmetic here (see NOTES.md); the original
         # used it to gate a "completed adventure" bonus, which this rebuild
@@ -63,6 +68,23 @@ class WifiAdventuresNG(plugins.Plugin):
 
     def _opt(self, key):
         return self.options.get(key, self.DEFAULTS[key])
+
+    def _resolve_position(self, ui):
+        # Convention: negative x = pixels in from the right edge.
+        try:
+            x = int(self._opt("position_x"))
+        except (TypeError, ValueError):
+            x = self.DEFAULTS["position_x"]
+        try:
+            y = int(self._opt("position_y"))
+        except (TypeError, ValueError):
+            y = self.DEFAULTS["position_y"]
+        if x < 0:
+            try:
+                x = int(ui.width()) + x
+            except Exception:
+                x = 0
+        return (x, y)
 
     def _resolve_data_path(self):
         configured = self._opt("data_path")
@@ -146,7 +168,7 @@ class WifiAdventuresNG(plugins.Plugin):
                 color=BLACK,
                 label="Adventures:  ",
                 value=f"{self.handshake_count} ({self.title})",
-                position=(0, 95),
+                position=self._resolve_position(ui),
                 label_font=fonts.Medium,
                 text_font=fonts.Medium,
             ),

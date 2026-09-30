@@ -271,6 +271,78 @@ check(
 )
 
 
+# --- ADDED: on-screen position options are honored --------------------------
+class _PosUI:
+    def __init__(self):
+        self.elements = {}
+
+    def add_element(self, name, widget):
+        self.elements[name] = widget
+
+    class _Lock:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    @property
+    def _lock(self):
+        return _PosUI._Lock()
+
+
+# Preferred convention-named position options land on the Age element.
+_bp = make_plugin(position_x=20, position_y=30)
+_bu = _PosUI()
+_bp.on_ui_setup(_bu)
+check(
+    "birthday honors configured position_x/position_y on the Age element",
+    _bu.elements["Age"].xy[:2] == (20, 30),
+)
+
+# Legacy age_x_coord / age_y_coord still work when position_x/y are unset.
+_bpl = make_plugin(age_x_coord=7, age_y_coord=8)
+_bul = _PosUI()
+_bpl.on_ui_setup(_bul)
+check(
+    "birthday still honors legacy age_x_coord/age_y_coord when position_x/y unset",
+    _bul.elements["Age"].xy[:2] == (7, 8),
+)
+
+# Default position is top-left (0, 0), matching the original.
+_bpd = make_plugin()
+_bud = _PosUI()
+_bpd.on_ui_setup(_bud)
+check(
+    "birthday default position is (0, 0)",
+    _bud.elements["Age"].xy[:2] == (0, 0),
+)
+
+# show_birthday branch places the Birthday element at the same resolved spot.
+_bpb = make_plugin(show_age=False, show_birthday=True, position_x=11, position_y=12)
+_bub = _PosUI()
+_bpb.on_ui_setup(_bub)
+check(
+    "birthday honors position on the Birthday element too",
+    _bub.elements["Birthday"].xy[:2] == (11, 12),
+)
+
+
+# --- ADDED: on_webhook returns a real body (never None -> Flask 500) --------
+_bw = make_plugin(show_age=True)
+_bw.born_at = time.time() - (400 * 24 * 3600)
+_wh_body = _bw.on_webhook("/", None)
+check("on_webhook returns a non-None body (avoids Flask 500 on index)", _wh_body is not None)
+check("on_webhook body is HTML text", isinstance(_wh_body, str) and "<html" in _wh_body.lower())
+
+_bw2 = make_plugin()
+_bw2.born_at = None
+check(
+    "on_webhook returns a body even when born_at is unknown",
+    _bw2.on_webhook("/", None) is not None,
+)
+
+
 print(f"\n{len(failures)} failure(s) out of test run")
 if failures:
     sys.exit(1)

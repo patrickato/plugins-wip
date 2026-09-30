@@ -117,3 +117,10 @@ class DisplayAircrackNG(plugins.Plugin):
 
     def on_webhook(self, path, request):
         logging.info("[DisplayAircrackNG] webhook pressed")
+        # Return a body. Returning None makes Flask raise a 500 on the bare
+        # index path (GET /plugins/display_aircrack_ng/).
+        state = self._opt("running_text") if self._running else self._opt("stopped_text")
+        return (
+            "<html><body><h2>DisplayAircrackNG</h2>"
+            "<p>aircrack-ng: %s</p></body></html>" % state
+        )

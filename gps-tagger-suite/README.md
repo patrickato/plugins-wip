@@ -74,6 +74,12 @@ in the original review.
 - **Rate-limited "no GPS fix" logging** (`no_gps_log_interval_seconds`,
   default 300s) instead of one log line per event.
 - **`manage_gps` flag (default `false`)** - see "GPS setup" below.
+- **Configurable on-screen positions** for both elements it draws: the
+  GPS status indicator (`status_position_x` / `status_position_y`,
+  defaults `1, 76`) and the tagged-AP counter (`count_position_x` /
+  `count_position_y`, defaults `122, 94`). Both defaults preserve the
+  original hardcoded spots; a negative `*_position_x` is measured in
+  pixels from the right edge of the display (repo-wide convention).
 
 **Deliberately not added:** its own GPS hardware driver - it reads
 whatever GPS source you already have configured, it doesn't replace one.

@@ -6,6 +6,14 @@
 [main.plugins.gps_tagger_ng]
 enabled = true
 
+# On-screen positions of the two elements this plugin draws. Negative x =
+# pixels in from the right edge (repo-wide convention). Defaults preserve the
+# original hardcoded spots.
+status_position_x = 1
+status_position_y = 76
+count_position_x = 122
+count_position_y = 94
+
 # Where per-AP GPS tag files are written (one JSON file per AP seen).
 # The directory is created automatically if it doesn't exist.
 pn_output_path = "/etc/pwnagotchi/gps_tagger_ng"

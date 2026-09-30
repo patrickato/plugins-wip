@@ -244,6 +244,37 @@ except Exception as e:
     check(f"on_ui_setup/on_ui_update run against the real LabeledValue without raising (got {type(e).__name__}: {e})", False)
 check("pn_count element shows the fixed (non-duplicated) counter text (fix #9)", ui.values.get("pn_count") == "3 APs")
 
+
+# --- ADDED: on-screen element positions are configurable --------------------
+class _PosUI:
+    def __init__(self, w=250):
+        self.elements = {}
+        self._w = w
+
+    def add_element(self, name, widget):
+        self.elements[name] = widget
+
+    def width(self):
+        return self._w
+
+
+_gp = make_plugin(status_position_x=5, status_position_y=6, count_position_x=50, count_position_y=60)
+_gu = _PosUI()
+_gp.on_ui_setup(_gu)
+check("gps-tagger honors configured status position", _gu.elements["pn_status"].xy[:2] == (5, 6))
+check("gps-tagger honors configured count position", _gu.elements["pn_count"].xy[:2] == (50, 60))
+
+_gpd = make_plugin()
+_gud = _PosUI()
+_gpd.on_ui_setup(_gud)
+check("gps-tagger default status position is (1, 76)", _gud.elements["pn_status"].xy[:2] == (1, 76))
+check("gps-tagger default count position is (122, 94)", _gud.elements["pn_count"].xy[:2] == (122, 94))
+
+_gpn = make_plugin(status_position_x=-20, status_position_y=10)
+_gun = _PosUI(w=250)
+_gpn.on_ui_setup(_gun)
+check("gps-tagger negative x resolves from the right edge", _gun.elements["pn_status"].xy[:2] == (230, 10))
+
 shutil.rmtree(tmpdir, ignore_errors=True)
 
 print()

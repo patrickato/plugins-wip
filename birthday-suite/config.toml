@@ -5,9 +5,14 @@ main.plugins.birthday_ng.enabled = true
 main.plugins.birthday_ng.show_age = true
 main.plugins.birthday_ng.show_birthday = false
 
-# On-screen position for whichever element is shown.
-main.plugins.birthday_ng.age_x_coord = 0
-main.plugins.birthday_ng.age_y_coord = 0
+# On-screen position for whichever element is shown (age or birthday).
+# Preferred, convention-named options (match the other NG suites):
+main.plugins.birthday_ng.position_x = 0
+main.plugins.birthday_ng.position_y = 0
+# Legacy option names below are still honored when position_x/position_y are
+# left unset, so older configs keep working:
+# main.plugins.birthday_ng.age_x_coord = 0
+# main.plugins.birthday_ng.age_y_coord = 0
 
 # Shown instead of the normal age string on the actual anniversary of
 # born_at (same month+day as today). {age} is replaced with the current

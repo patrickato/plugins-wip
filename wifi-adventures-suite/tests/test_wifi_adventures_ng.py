@@ -287,6 +287,44 @@ check("on_unload doesn't crash", unload_ok)
 check("on_unload removes the wifiAdventures UI element", "wifiAdventures" not in ui3.elements)
 
 
+# --- ADDED: on-screen position options are honored --------------------------
+class _PosUI:
+    def __init__(self, w=250):
+        self.elements = {}
+        self._w = w
+
+    def add_element(self, name, widget):
+        self.elements[name] = widget
+
+    def width(self):
+        return self._w
+
+
+_wp = make_plugin(position_x=12, position_y=34)
+_wu = _PosUI()
+_wp.on_ui_setup(_wu)
+check(
+    "wifi-adventures honors configured position_x/position_y",
+    _wu.elements["wifiAdventures"].xy[:2] == (12, 34),
+)
+
+_wpd = make_plugin()
+_wud = _PosUI()
+_wpd.on_ui_setup(_wud)
+check(
+    "wifi-adventures default position is (0, 95)",
+    _wud.elements["wifiAdventures"].xy[:2] == (0, 95),
+)
+
+_wpn = make_plugin(position_x=-30, position_y=40)
+_wun = _PosUI(w=250)
+_wpn.on_ui_setup(_wun)
+check(
+    "wifi-adventures negative x resolves from the right edge",
+    _wun.elements["wifiAdventures"].xy[:2] == (220, 40),
+)
+
+
 print(f"\n{len(failures)} failure(s) out of test run")
 if failures:
     sys.exit(1)

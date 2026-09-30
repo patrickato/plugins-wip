@@ -1,5 +1,10 @@
 main.plugins.wifi_adventures_ng.enabled = true
 
+# On-screen position of the Adventures element. Negative x = pixels in from
+# the right edge (repo-wide convention). Defaults preserve the original spot.
+main.plugins.wifi_adventures_ng.position_x = 0
+main.plugins.wifi_adventures_ng.position_y = 95
+
 # Purely cosmetic in this rebuild - kept as a config knob in case a future
 # streak/quest display wants it, but nothing currently gates on it.
 main.plugins.wifi_adventures_ng.daily_quest_target = 5

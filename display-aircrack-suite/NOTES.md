@@ -38,10 +38,14 @@ efficiency/feature addition, not a bugfix one.
   `ui.width() // 2 - 10, 0`, still the default) and configurable
   `running_text`/`stopped_text` (replacing the original's bare
   `"(1)"`/`"(0)"`, defaulting to the clearer `"AC:ON"`/`"AC:OFF"`).
+  Finally, `on_webhook` now returns a real HTML body: the original
+  returned `None`, which makes Flask raise a 500 on the bare plugin
+  index (`GET /plugins/display_aircrack_ng/`); the body reports the
+  current running/stopped state.
 
 ## Testing
 
-13 tests in `tests/test_display_aircrack_ng.py`, all passing against
+Tests in `tests/test_display_aircrack_ng.py`, all passing against
 the real cloned `jayofelony/pwnagotchi` framework: real plugin
 registration; the default position matching the original's formula;
 a configured position being honored; the running/stopped text
@@ -50,8 +54,10 @@ and with configured text; `check_interval` correctly throttling
 repeated `ps` calls while still updating the displayed value from the
 last known state every tick; an invalid `check_interval` falling back
 to the default; the plugin not crashing (and keeping its last known
-state) if the `ps` check itself raises; and clean `on_unload` behavior
-both with and without a prior `on_ui_setup` call.
+state) if the `ps` check itself raises; clean `on_unload` behavior
+both with and without a prior `on_ui_setup` call; and `on_webhook`
+returning a non-None HTML body that reflects the running/stopped
+state.
 
 ## Still open
 
