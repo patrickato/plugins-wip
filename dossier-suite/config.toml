@@ -1,0 +1,92 @@
+# DossierNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (dossier_ng.py works around this
+# itself with the module-level DEFAULTS dict + _opt() pattern, but the
+# shipped block below still spells everything out so it's all visible/
+# editable in one place, matching this repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.dossier_ng], matching
+# the plugin FILE's exact basename (dossier_ng.py), NOT the class name
+# (DossierNG). This fork's loader (pwnagotchi/plugins/__init__.py) registers
+# and looks up every plugin - both whether it's "enabled" at all, and its
+# options table - by the plugin file's exact basename, verbatim, case
+# included. A section spelled any other way would never even show up in the
+# framework's "enabled" list, so the plugin would silently never load.
+#
+# WHAT THIS PLUGIN DOES, so there are no surprises: it is a PURE READ-ONLY
+# REPORTING plugin. It does not scan WiFi or Bluetooth itself, does not run
+# any bettercap command, and never modifies any other suite's files. All it
+# does is read the ALREADY-WRITTEN output files of four other suites in this
+# repo (crack-house-suite, timer-suite, gps-tagger-suite, and
+# bluetooth-recon-suite) and assembles one merged "dossier" per WiFi target
+# hostname - cracked password, GPS tag, capture timing, and possible nearby
+# Bluetooth devices - viewable as a report page through pwnagotchi's own
+# built-in web UI (on_webhook), with no separate server/port of its own.
+#
+# This is best-effort against each of those four suites' own default output
+# paths. If any subset of those four suites isn't installed, or is installed
+# but hasn't produced any data yet, this plugin still works fine - dossiers
+# just have fewer populated fields (e.g. no GPS section if gps-tagger-suite
+# isn't running). A missing/unreadable source is never fatal to the other
+# three, and never crashes this plugin.
+
+[main.plugins.dossier_ng]
+enabled = true
+
+# ---------------------------------------------------------------------
+# Source paths - the four suites this plugin reads from
+# ---------------------------------------------------------------------
+# Each default below matches that source suite's OWN default output path
+# exactly, so this plugin "just works" out of the box on a system already
+# running all four suites with their default configs. Override any of these
+# if your setup uses a non-default path for that suite.
+
+# crack-house-suite's own `saving_path` default - a plain-text potfile, one
+# "hostname:password" line per cracked network, rewritten fresh on every
+# crack-house-suite on_loaded().
+crack_house_potfile_path = "/etc/pwnagotchi/handshakes/crack_house_ng.potfile"
+
+# timer-suite's own `output_path` default - a CSV, one row per handshake
+# event. A network can appear more than once across runs; this plugin uses
+# the most recent row per network as that network's primary timing record,
+# and notes the total historical row count if there's more than one.
+timer_csv_path = "/etc/pwnagotchi/timer_ng.csv"
+
+# bluetooth-recon-suite's own `device_table_path` default - a JSON device
+# table already carrying each Bluetooth device's OWN computed
+# `correlated_networks` (which WiFi hostnames that suite's own time-window
+# correlation matched it to). This plugin does NOT re-derive that
+# correlation - it only reads and inverts this already-computed field. See
+# NOTES.md for the full design rationale.
+bluetooth_device_table_path = "/etc/pwnagotchi/handshakes/bluetooth_recon_ng.json"
+
+# gps-tagger-suite's own `pn_output_path` default - a DIRECTORY of one JSON
+# file per tagged AP. The most-recently-modified matching file per hostname
+# is used.
+gps_tagger_dir_path = "/etc/pwnagotchi/gps_tagger_ng"
+
+# ---------------------------------------------------------------------
+# On-screen badge (pwnagotchi's e-ink display) - optional, purely
+# informational
+# ---------------------------------------------------------------------
+# false (default): nothing shown on-screen. The real report surface is the
+# webhook page (see README.md), not the small e-ink display.
+show_on_screen = false
+
+# Position, in pixels. Leave both commented out (the default - None means
+# auto) for an automatic bottom-left position, following the same pattern
+# showerthoughts_ng.py uses. Only used when show_on_screen = true.
+# position_x = 0
+# position_y = 0
+
+# ---------------------------------------------------------------------
+# refresh_interval_seconds
+# ---------------------------------------------------------------------
+# How often (seconds) the four source files/directories are RE-READ and the
+# assembled dossier view rebuilt. The assembled result is cached and reused
+# between rebuilds - it is not re-read on every single UI tick or every
+# single webhook hit, only after this many seconds have elapsed since the
+# last build (a webhook request always triggers an on-demand rebuild if the
+# cache has gone stale in the meantime).
+refresh_interval_seconds = 30

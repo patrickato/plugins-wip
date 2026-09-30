@@ -1,0 +1,138 @@
+# FortuneThoughtsNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (fortune_thoughts_ng.py works
+# around this itself with the module-level DEFAULTS dict + _opt() pattern,
+# but the shipped block below still spells everything out so it's all
+# visible/editable in one place, matching this repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.fortune_thoughts_ng],
+# matching the plugin FILE's exact basename (fortune_thoughts_ng.py), NOT
+# the class name (FortuneThoughtsNG) and NOT either original plugin's own
+# section name. This is not a style choice: this fork's loader
+# (pwnagotchi/plugins/__init__.py) registers and looks up every plugin -
+# both whether it's "enabled" at all, and its options table - by the
+# plugin file's exact basename, verbatim, case included. A section spelled
+# differently from the file's basename would never even show up in the
+# framework's "enabled" list, so the plugin would silently never load. See
+# NOTES.md for the full writeup.
+#
+# WHAT THIS PLUGIN DOES: merges fortune-cookie-suite and
+# showerthoughts-suite into one suite with a single on-screen element that
+# rotates a short text message while the unit is idle. `content_source`
+# below picks where that text comes from - a local list, a shelled-out
+# command, live r/Showerthoughts posts, or an automatic preference order
+# between them. This is a benign display/flair plugin - no scanning, no
+# network writes, no separate server - so it's safe to default on.
+
+[main.plugins.fortune_thoughts_ng]
+enabled = true
+
+# "vertical" shows a "Fortune:" label above the message; "horizontal"
+# (default) shows just the message on a single combined line.
+orientation = "horizontal"
+
+# How often (in seconds) the displayed message rotates while the daemon
+# runs. Replaces both originals' separate rotate intervals
+# (fortune-cookie-suite defaulted to 60s, showerthoughts-suite to 30s) -
+# 45s is a reasonable middle ground; see NOTES.md.
+rotate_interval_seconds = 45
+
+# ---------------------------------------------------------------------
+# content_source - which pool of text actually gets shown
+# ---------------------------------------------------------------------
+# One of:
+#   "local"   (default) - always use the `fortunes` list below, or
+#             `fortune_command` if it's configured (fortune_command takes
+#             priority over the list when both are set). Needs no network
+#             access at all.
+#   "command" - always use `fortune_command`, falling back to the
+#             `fortunes` list on any failure (missing binary, timeout,
+#             non-zero exit, empty output).
+#   "reddit"  - always use the live r/Showerthoughts pool fetched in the
+#             background. If that pool is currently empty (nothing
+#             fetched yet, every fetch has failed, or there's no
+#             internet), falls back to the `fortunes` list so the
+#             display is never blank.
+#   "auto"    - prefer the reddit pool if it currently has content;
+#             otherwise fall back to `fortune_command` if configured;
+#             otherwise fall back to the `fortunes` list. Full chain:
+#             reddit pool -> fortune_command -> local fortunes list.
+#
+# The background reddit-fetch machinery (on_internet_available) is only
+# ever started when content_source is "reddit" or "auto" - "local"/
+# "command" mode never spends a thread or a network call on it.
+content_source = "local"
+
+# ---------------------------------------------------------------------
+# Local pool (fortune-cookie-derived)
+# ---------------------------------------------------------------------
+
+# The pool of fortunes to pick from at random. Expand or replace freely.
+fortunes = [
+    "You will have a successful hacking session!",
+    "Good fortune will come your way.",
+    "Be prepared for a surprise in your network captures!",
+    "Your Pwnagotchi is feeling lucky today.",
+    "A new handshake is closer than it appears.",
+    "Patience captures more packets than haste.",
+    "The strongest signal is the one you didn't expect.",
+    "Today's deauth is tomorrow's handshake.",
+    "A watched access point never associates.",
+    "Fortune favors the well-antenna'd.",
+    "Your next epoch brings good luck.",
+    "Trust in your wordlist.",
+    "The best channel is the one nobody else is hopping to.",
+    "Great captures come to those who wait.",
+    "A quiet network hides a curious secret.",
+    "Your persistence will be rewarded with a PMKID.",
+    "Somewhere, a weak password awaits discovery.",
+    "The road to root is paved with patience.",
+    "An unexpected peer brings unexpected luck.",
+    "Today is a good day to sniff the air.",
+]
+
+# Optional: if set, shell out to this command (e.g. "fortune") to get a
+# fresh message instead of picking from the list above. Leave empty
+# (default) to disable. Falls back gracefully to the configured list if
+# the command is missing, times out, or exits non-zero. Only relevant
+# when content_source is "local", "command", or "auto".
+fortune_command = ""
+
+# ---------------------------------------------------------------------
+# Reddit pool (showerthoughts-derived) - only used when content_source
+# is "reddit" or "auto"
+# ---------------------------------------------------------------------
+
+subreddit = "Showerthoughts"
+
+# How many posts to pull per fetch, and the minimum upvote score to keep
+# one (filters out low-quality/removed-but-still-listed posts).
+fetch_limit = 100
+min_score = 5
+
+# How often to re-fetch a fresh batch from reddit (seconds).
+refresh_interval_seconds = 3600
+
+# Truncate thoughts longer than this many characters (small screens).
+max_length = 60
+
+# Where the fetched reddit pool is cached to disk (survives restarts,
+# gives you content even before the first successful fetch after a
+# reboot). Loaded on plugin load regardless of content_source, so
+# switching to "reddit"/"auto" later still has something to show.
+# cache_file = "/etc/pwnagotchi/fortune_thoughts_ng_cache.json"
+
+# ---------------------------------------------------------------------
+# Screen position
+# ---------------------------------------------------------------------
+# Explicit override - when BOTH are set, they win outright over the
+# per-hardware table below. Leave both unset (default) to use that table
+# instead.
+# position_x = 0
+# position_y = 112
+
+# Personality states that immediately rotate to a new message, on top of
+# the normal rotate_interval_seconds timer. Applies no matter what
+# content_source is set to.
+reactive_states = ["bored", "lonely", "sad"]
