@@ -24,7 +24,10 @@ DEFAULTS = {
     # from, so already-cracked networks can be marked on the graph.
     # Defaults to CrackHouseNG's own default saving_path. Set to an
     # empty string to disable cross-referencing entirely.
-    "crack_house_saving_path": "/root/handshakes/crack_house_ng.potfile",
+    # Post-cluster-review update: crack_house_ng.py's own saving_path
+    # default moved to "/etc/pwnagotchi/handshakes" (this fork's actual
+    # real handshake directory) - matched here too.
+    "crack_house_saving_path": "/etc/pwnagotchi/handshakes/crack_house_ng.potfile",
 }
 
 # FIXED: the original imported "from pwnagotchi.wifi import

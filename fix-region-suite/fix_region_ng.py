@@ -153,6 +153,13 @@ DEFAULTS = {
     # Off by default - a purely informational, best-effort feature.
     # Never auto-applies anything; see the module docstring.
     "gps_region_suggestion": False,
+    # Post-cluster-review update: GPS_SIBLING_PLUGIN_NAMES below was a
+    # hardcoded tuple - a rename of gps-tagger-suite's .py file would
+    # silently break this lookup. Now overridable: set this to a list
+    # of plugin-loaded names to check *instead of* the built-in
+    # defaults, in priority order. Leave unset (None) to use the
+    # built-ins. on_ready logs whether a sibling was actually found.
+    "gps_sibling_names": None,
     # Where the small "what region did we last actually apply"
     # state file lives - this is what makes change-detection (bug fix
     # #3) possible without re-parsing the generated shell script.
@@ -333,10 +340,12 @@ class FixRegionNG(plugins.Plugin):
                 f"to apply anything. Fix `region` in config.toml."
             )
             if self._opt("gps_region_suggestion"):
+                self._log_gps_sibling_status()
                 self._maybe_suggest_gps_region(None)
             return
 
         if self._opt("gps_region_suggestion"):
+            self._log_gps_sibling_status()
             self._maybe_suggest_gps_region(configured)
 
         state = self._load_state()
@@ -534,8 +543,37 @@ class FixRegionNG(plugins.Plugin):
     # ------------------------------------------------------------------
     # Optional GPS-based region suggestion (logged only, never applied)
 
+    def _log_gps_sibling_status(self):
+        """Post-cluster-review addition: this lookup previously degraded
+        completely silently (no log at all) if none of
+        GPS_SIBLING_PLUGIN_NAMES were found - e.g. because gps-tagger-
+        suite was renamed, disabled, or never installed. Logs a clear
+        INFO/WARNING line at load time stating which name (if any) was
+        actually found, so a misconfiguration is visible in the normal
+        log rather than a silently-empty feature."""
+        names = self._gps_sibling_names()
+        for name in names:
+            if plugins.loaded.get(name) is not None:
+                logging.info(
+                    f"[{self.__class__.__name__}] gps_region_suggestion: "
+                    f"sibling plugin '{name}' found"
+                )
+                return
+        logging.warning(
+            f"[{self.__class__.__name__}] gps_region_suggestion: none of "
+            f"{names!r} found in plugins.loaded - the GPS-based region "
+            f"hint won't fire until one is installed/enabled, or "
+            f"gps_sibling_names is corrected if it was renamed"
+        )
+
+    def _gps_sibling_names(self):
+        configured = self._opt("gps_sibling_names")
+        if isinstance(configured, list) and configured:
+            return tuple(str(n) for n in configured)
+        return GPS_SIBLING_PLUGIN_NAMES
+
     def _find_gps_coords(self):
-        for name in GPS_SIBLING_PLUGIN_NAMES:
+        for name in self._gps_sibling_names():
             target = plugins.loaded.get(name)
             if target is None:
                 continue

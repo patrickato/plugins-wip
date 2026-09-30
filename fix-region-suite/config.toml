@@ -56,10 +56,22 @@ region = "US"
 # bounding-box table. This is a LOGGED SUGGESTION ONLY - it is never
 # applied automatically, under any circumstance. The `region` value
 # above is the only thing this plugin ever actually sets. If no GPS
-# plugin is loaded, or no fix is available, this silently does
-# nothing - it never blocks plugin load or crashes anything. See
-# NOTES.md for the bounding-box table's scope and honest limitations.
+# plugin is loaded, or no fix is available, this never blocks plugin
+# load or crashes anything - but it is NOT silent: on_loaded() now logs
+# an INFO line naming which GPS sibling it found (if any), or a WARNING
+# listing every name it checked if none were loaded, so a
+# misconfiguration shows up in the normal log right away. See NOTES.md
+# for the bounding-box table's scope and honest limitations.
 gps_region_suggestion = false
+
+# Post-cluster-review addition: override which plugin-loaded names count
+# as a "GPS sibling" for the suggestion above. Only needed if you've
+# renamed a GPS plugin's .py file from its shipped name (this fork's
+# built-in check otherwise looks for the usual suspects - gps_ng,
+# gps.py's basename, bettercap-gps variants, etc. - see
+# GPS_SIBLING_PLUGIN_NAMES in fix_region_ng.py for the exact built-in
+# list). Leave commented out to use the built-in list.
+# gps_sibling_names = ["gps_ng", "gps"]
 
 # Internal bookkeeping - the paths this plugin writes to. You shouldn't
 # need to change any of these; they're exposed for completeness/testing

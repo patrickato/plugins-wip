@@ -495,3 +495,12 @@ A real original config file for `handshaker.py` was found (exact match) at
 `config.original.toml`, per the project's standing config-preservation requirement,
 for reference/troubleshooting if the rebuilt `config.toml` above ever
 needs comparing against the source.
+
+## Post-cluster-review fix: real handshake directory default
+
+`data_path` defaulted to `/root/handshakes` (the legacy/upstream path),
+matching the original plugin's own hardcoded value. The post-cluster-
+review conflict pass confirmed this fork's actual real handshake
+directory is `/etc/pwnagotchi/handshakes` (per discohash-suite's and
+discord-suite's own code) - changed the default to match. Still fully
+overridable via `data_path` if yours differs.

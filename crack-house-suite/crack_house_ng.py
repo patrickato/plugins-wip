@@ -14,12 +14,17 @@ import pwnagotchi.ui.fonts as fonts
 DEFAULTS = {
     "enabled": False,
     "orientation": "vertical",
+    # Post-cluster-review update: these defaulted to "/root/handshakes"
+    # (the legacy/upstream path) - changed to "/etc/pwnagotchi/handshakes",
+    # this fork's actual real handshake directory (confirmed via
+    # discohash-suite's and discord-suite's own code). Still fully
+    # overridable if your setup differs.
     "files": [
-        "/root/handshakes/wpa-sec.cracked.potfile",
-        "/root/handshakes/my.potfile",
-        "/root/handshakes/OnlineHashCrack.cracked",
+        "/etc/pwnagotchi/handshakes/wpa-sec.cracked.potfile",
+        "/etc/pwnagotchi/handshakes/my.potfile",
+        "/etc/pwnagotchi/handshakes/OnlineHashCrack.cracked",
     ],
-    "saving_path": "/root/handshakes/crack_house_ng.potfile",
+    "saving_path": "/etc/pwnagotchi/handshakes/crack_house_ng.potfile",
     "display_stats": True,
     # None on all four means: use the built-in default position for the
     # chosen orientation (see _default_position/_default_stats_position
@@ -163,7 +168,12 @@ class CrackHouseNG(plugins.Plugin):
     def _default_position(self):
         if self._opt("orientation") == "vertical":
             return (180, 61)
-        return (0, 91)
+        # (0, 71), not (0, 91): the post-cluster-review conflict pass
+        # found that (0, 91) collides with fortune-cookie/showerthoughts
+        # suite's own default position on non-Waveshare/non-Inky
+        # displays. Both positions remain fully overridable via
+        # position_x/position_y regardless - see config.toml.
+        return (0, 71)
 
     def _default_stats_position(self):
         return (0, 30)

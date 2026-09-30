@@ -144,8 +144,17 @@ notify_on_threshold = false
 
 # "apprise" | "discord" | "auto" (try apprise first, then discord).
 # If the chosen/detected plugin isn't loaded or isn't configured, this
-# is logged and skipped - it never crashes the poll loop.
+# is logged and skipped - it never crashes the poll loop. on_ready logs
+# a clear INFO/WARNING line stating whether each sibling was actually
+# found, so a misconfiguration shows up in the normal log right away.
 notify_backend = "auto"
+
+# Post-cluster-review addition: the plugin-loaded lookup names for the
+# two notification suites above. Only change these if you've renamed
+# apprise-notify-suite's or discord-suite's .py file from its shipped
+# name - otherwise leave as-is.
+apprise_plugin_name = "apprise_notify_ng"
+discord_plugin_name = "discord_ng"
 
 # ---------------------------------------------------------------------
 # NEW: trend history logging (feature 2)

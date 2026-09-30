@@ -94,8 +94,13 @@ setup, not a bug):
   behavior:
     (a) the handshakes data directory is now the `data_path` config
         option instead of the hardcoded `/root/handshakes` string used
-        twice in the original - default value is still
-        `/root/handshakes`, so out-of-the-box behavior is unchanged.
+        twice in the original. Post-cluster-review update: the default
+        value is now `/etc/pwnagotchi/handshakes` (this fork's actual
+        real handshake directory, confirmed via discohash-suite's and
+        discord-suite's own code) rather than the original's hardcoded
+        `/root/handshakes`, which was the legacy/upstream path and
+        never actually matches a real capture on this fork. Still
+        fully overridable via `data_path` either way.
     (b) every `os.system(...)` call in `on_ready`/`on_unload` is now
         wrapped in its own try/except (`_safe_system()`) - one failing
         step (e.g. `/boot/custom_plugins` absent on some installs, or a
@@ -207,11 +212,14 @@ from werkzeug.serving import make_server
 # never bare self.options[...].
 DEFAULTS = {
     "enabled": False,
-    # Where captured handshakes live. Matches the original's hardcoded
-    # "/root/handshakes" as the default, so out-of-the-box behavior is
-    # unchanged - but it's now a real option, not a hardcoded string
-    # repeated in two places.
-    "data_path": "/root/handshakes",
+    # Where captured handshakes live. The original hardcoded
+    # "/root/handshakes" (the legacy/upstream path) in two places;
+    # post-cluster-review update: defaults to this fork's actual real
+    # handshake directory, "/etc/pwnagotchi/handshakes" (confirmed via
+    # discohash-suite's and discord-suite's own code), and is now a
+    # real option instead of a hardcoded string. Override if yours
+    # differs.
+    "data_path": "/etc/pwnagotchi/handshakes",
     # Preserves the original's always-on boot-sync behavior
     # (on_ready's rsync-to-/boot/handshakes + log/config.toml copying)
     # by default. Set false to skip all of that.

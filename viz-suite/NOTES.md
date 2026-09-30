@@ -121,3 +121,11 @@ is not a substitute for testing against the genuine plotly library.
 - Real `plotly` hasn't been exercised, only a local stand-in covering
   its public surface used here - see README's "Still open" section.
 - No real-hardware/browser check yet of the actual rendered graph.
+
+## Post-cluster-review fix: real handshake directory default
+
+`crack_house_saving_path` defaulted to a path under `/root/handshakes`.
+Changed to `/etc/pwnagotchi/handshakes` to match crack-house-suite's
+own updated `saving_path` default, so the already-cracked-network
+cross-referencing still works out of the box between the two suites.
+Still fully overridable.

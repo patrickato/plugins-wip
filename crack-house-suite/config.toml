@@ -15,13 +15,13 @@ orientation = "vertical"
 # instead of crashing the plugin (the original crashed on load if even
 # one of these didn't exist).
 files = [
-  "/root/handshakes/wpa-sec.cracked.potfile",
-  "/root/handshakes/my.potfile",
-  "/root/handshakes/OnlineHashCrack.cracked",
+  "/etc/pwnagotchi/handshakes/wpa-sec.cracked.potfile",
+  "/etc/pwnagotchi/handshakes/my.potfile",
+  "/etc/pwnagotchi/handshakes/OnlineHashCrack.cracked",
 ]
 
 # Where the merged, deduplicated list is written as a backup.
-saving_path = "/root/handshakes/crack_house_ng.potfile"
+saving_path = "/etc/pwnagotchi/handshakes/crack_house_ng.potfile"
 
 # Show a small "(HH:MM) nearby/total" stats element alongside the main one.
 display_stats = true

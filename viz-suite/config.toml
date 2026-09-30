@@ -21,4 +21,4 @@ enabled = true
 # CrackHouseNG's own default saving_path - only change this if you've
 # also changed CrackHouseNG's saving_path, or set to "" to disable
 # cross-referencing entirely (e.g. if you're not running CrackHouseNG).
-# crack_house_saving_path = "/root/handshakes/crack_house_ng.potfile"
+# crack_house_saving_path = "/etc/pwnagotchi/handshakes/crack_house_ng.potfile"

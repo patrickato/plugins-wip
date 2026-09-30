@@ -146,3 +146,29 @@ A real original config file for `crack_house.py` was found (exact match) at
 `config.original.toml`, per the project's standing config-preservation requirement,
 for reference/troubleshooting if the rebuilt `config.toml` above ever
 needs comparing against the source.
+
+## Post-cluster-review fix: screen-position overlap
+
+The post-cluster-review conflict pass found that this suite's
+`orientation = "horizontal"` default position, (0, 91), is identical to
+fortune-cookie-suite's own default position on non-Waveshare/non-Inky
+displays - both would render at the same spot if a user ran both
+suites with default settings and horizontal orientation. Changed the
+horizontal-orientation default to (0, 71). No change to the
+`orientation = "vertical"` default (180, 61), which never collided.
+`position_x`/`position_y` remain fully user-configurable and override
+either default regardless.
+
+## Post-cluster-review fix: real handshake directory default
+
+The post-cluster-review conflict pass confirmed (via discohash-suite's
+and discord-suite's own code comments) that this fork's actual handshake
+capture directory is `/etc/pwnagotchi/handshakes`, not the legacy/upstream
+`/root/handshakes` path the original `crack_house.py` hardcoded. Updated
+this suite's `files` list (the potfile/handshake-list paths it watches)
+and `saving_path` default to `/etc/pwnagotchi/handshakes/...` to match.
+Both remain fully overridable via config. Since bluetooth-recon-suite's
+`crack_house_potfile_path` and viz-suite's `crack_house_saving_path`
+both read this suite's output by convention (for the cross-suite
+correlation features), their own defaults were updated to match in the
+same pass - see their own NOTES.md entries.

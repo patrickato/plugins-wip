@@ -337,3 +337,13 @@ Preserved verbatim in this suite's own folder as
 `blemon_plugin.config.original.toml` and
 `bluetoothsniffer.config.original.toml`, per the project's standing
 config-preservation requirement.
+
+## Post-cluster-review fix: real handshake directory default
+
+`device_table_path` and `crack_house_potfile_path` both defaulted to
+paths under `/root/handshakes` (the legacy/upstream path). Changed to
+`/etc/pwnagotchi/handshakes` - this fork's actual real handshake
+directory (per discohash-suite's/discord-suite's own code), and matches
+crack-house-suite's own updated `saving_path` default so the
+correlation feature still works out of the box between the two suites.
+Both remain fully overridable.

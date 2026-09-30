@@ -13,7 +13,7 @@ enabled = true
 # Where the merged BLE + classic device table is persisted as JSON,
 # reloaded on load so counts/history survive a reboot. Same directory
 # convention as crack_house_ng.py's saving_path default.
-device_table_path = "/root/handshakes/bluetooth_recon_ng.json"
+device_table_path = "/etc/pwnagotchi/handshakes/bluetooth_recon_ng.json"
 
 # Devices whose last_seen is older than this are pruned from memory and
 # from the persisted file on the next scan cycle. 168 = 7 days. Set to
@@ -56,7 +56,7 @@ correlation_window_minutes = 10
 # match each source plugin's own default output path, so this works out
 # of the box if you also run crack_house_ng.py / timer_ng.py /
 # gps_tagger_ng.py with their own defaults.
-crack_house_potfile_path = "/root/handshakes/crack_house_ng.potfile"
+crack_house_potfile_path = "/etc/pwnagotchi/handshakes/crack_house_ng.potfile"
 timer_csv_path = "/etc/pwnagotchi/timer_ng.csv"
 gps_tagger_dir_path = "/etc/pwnagotchi/gps_tagger_ng"
 

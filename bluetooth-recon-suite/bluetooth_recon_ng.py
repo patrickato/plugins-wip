@@ -139,9 +139,12 @@ except ImportError:  # pragma: no cover - flask is always present on-device
 DEFAULTS = {
     "enabled": False,
     # Where the merged device table is persisted as JSON, reloaded on
-    # on_loaded so counts/history survive a reboot. Under /root/, same
-    # convention as crack_house_ng.py's saving_path default.
-    "device_table_path": "/root/handshakes/bluetooth_recon_ng.json",
+    # on_loaded so counts/history survive a reboot. Post-cluster-review
+    # update: moved from "/root/handshakes" to
+    # "/etc/pwnagotchi/handshakes" to match crack_house_ng.py's own
+    # updated saving_path default (this fork's actual real handshake
+    # directory).
+    "device_table_path": "/etc/pwnagotchi/handshakes/bluetooth_recon_ng.json",
     # Devices whose last_seen is older than this are pruned from memory
     # and from the persisted file on the next scan cycle. 168h = 7 days.
     "retention_hours": 168,
@@ -167,7 +170,9 @@ DEFAULTS = {
     # sources. Defaults match each source plugin's own default so this
     # works out of the box if those plugins are also installed with
     # their defaults; all three are read only if the file/dir exists.
-    "crack_house_potfile_path": "/root/handshakes/crack_house_ng.potfile",
+    # Post-cluster-review update: crack_house_ng.py's own saving_path
+    # default moved to "/etc/pwnagotchi/handshakes" - matched here too.
+    "crack_house_potfile_path": "/etc/pwnagotchi/handshakes/crack_house_ng.potfile",
     "timer_csv_path": "/etc/pwnagotchi/timer_ng.csv",
     "gps_tagger_dir_path": "/etc/pwnagotchi/gps_tagger_ng",
     # On-screen element positions. None on any of the four means: use

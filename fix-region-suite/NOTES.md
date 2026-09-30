@@ -366,3 +366,22 @@ A real original config file for `fix_region.py` was found (exact match) at
 `config.original.toml`, per the project's standing config-preservation requirement,
 for reference/troubleshooting if the rebuilt `config.toml` above ever
 needs comparing against the source.
+
+## Post-cluster-review fix: hardcoded sibling name made configurable
+
+The post-cluster-review conflict pass found that the GPS-suggestion
+lookup iterated a hardcoded `GPS_SIBLING_PLUGIN_NAMES` tuple with no way
+to override it - if a user's GPS plugin file used a different basename
+than any of the built-in guesses, the suggestion would silently never
+fire, no differently than if no GPS plugin were installed at all. Fixed
+by adding a new `gps_sibling_names` option (a list, unset/commented-out
+by default so the built-in tuple is still used unchanged out of the
+box) via a new `_gps_sibling_names()` helper that `_find_gps_coords` now
+calls instead of referencing the module-level tuple directly. Also added
+`_log_gps_sibling_status()`, called from both places `on_loaded()` checks
+`gps_region_suggestion`, which logs an INFO line naming whichever GPS
+sibling was actually found, or a WARNING listing every name it checked
+if none were found. This is why the `gps_region_suggestion` config
+comment above no longer says the feature is fully silent when no GPS
+plugin is found - it never blocked or crashed anything before, and
+still doesn't, but it's no longer silent about it either.

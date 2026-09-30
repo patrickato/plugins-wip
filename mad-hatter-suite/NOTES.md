@@ -367,3 +367,22 @@ disproportionately valuable compared to the rest of the audit:
   against `MadHatterNG.py` in that framework; it has not been
   confirmed against a live `pwnagotchi.service` restart on real
   hardware picking the plugin up from `config.toml`.
+
+## Post-cluster-review fix: hardcoded sibling name made configurable
+
+The post-cluster-review conflict pass found that `_notify_via_apprise`
+and `_notify_via_discord` hardcoded `plugins.loaded.get("apprise_notify_ng")`
+and `plugins.loaded.get("discord_ng")` - if either sibling suite's `.py`
+file were ever renamed from its shipped name, the lookup would fail
+silently (no log line, just a threshold notification that quietly never
+arrives). Fixed by adding two new options, `apprise_plugin_name` and
+`discord_plugin_name` (defaulting to the shipped names, so behavior is
+unchanged out of the box), and looking those up via `self._opt(...)`
+instead of the hardcoded strings. Also added `_log_notify_sibling_status()`,
+called from `on_ready` (after all plugins have had a chance to load, to
+avoid a false "not found" from load-order races), which logs an INFO
+line naming whichever sibling(s) `notify_backend` would actually use, or
+a WARNING telling you the configured name wasn't found and to check
+`apprise_plugin_name`/`discord_plugin_name`. This only runs when
+`notify_on_threshold` is enabled - it doesn't add log noise for the
+common case where threshold notifications are off.

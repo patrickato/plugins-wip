@@ -1330,6 +1330,14 @@ class MadHatterNG(plugins.Plugin):
         # NEW: notifications (feature 1)
         "notify_on_threshold": False,
         "notify_backend": "auto",     # "apprise" | "discord" | "auto"
+        # Post-cluster-review update: the sibling plugin names below
+        # were previously hardcoded ("apprise_notify_ng"/"discord_ng").
+        # A rename of either suite's .py file would then silently break
+        # this integration with no visible error (see on_loaded's new
+        # startup log line below). Now configurable so a rename is a
+        # one-line config change instead of a code change.
+        "apprise_plugin_name": "apprise_notify_ng",
+        "discord_plugin_name": "discord_ng",
         # NEW: history logging (feature 2)
         "history_max_points": 720,
         "history_log_interval_seconds": 60,
@@ -1451,6 +1459,36 @@ class MadHatterNG(plugins.Plugin):
         # backends (apprise_notify_ng's _queue_notification takes one) - the
         # original mad_hatter.py has no on_ready at all, this is additive.
         self._agent = agent
+        self._log_notify_sibling_status()
+
+    def _log_notify_sibling_status(self):
+        """Post-cluster-review addition: this integration previously
+        degraded to a silent no-op (a debug-level log line, easy to
+        miss) if apprise_notify_ng/discord_ng were renamed, disabled,
+        or never installed. Runs once at on_ready (after all plugins
+        have had a chance to load) and logs a clear, visible INFO/
+        WARNING line stating whether each configured sibling was
+        actually found - so a misconfiguration shows up in the normal
+        log, not just when a threshold notification is first due."""
+        if not self._opt("notify_on_threshold", False):
+            return
+        backend = str(self._opt("notify_backend", "auto")).strip().lower()
+        checks = []
+        if backend in ("apprise", "auto"):
+            checks.append(("apprise", self._opt("apprise_plugin_name", "apprise_notify_ng")))
+        if backend in ("discord", "auto"):
+            checks.append(("discord", self._opt("discord_plugin_name", "discord_ng")))
+        for kind, name in checks:
+            if plugins.loaded.get(name) is not None:
+                logging.info("%s notify_backend=%s: sibling plugin '%s' found",
+                             LOG, kind, name)
+            else:
+                logging.warning(
+                    "%s notify_backend=%s: sibling plugin '%s' not found in "
+                    "plugins.loaded - threshold notifications via %s won't "
+                    "fire until it's installed/enabled, or "
+                    "%s_plugin_name is corrected if it was renamed",
+                    LOG, kind, name, kind, kind)
 
     def _try_init(self):
         try:
@@ -1689,7 +1727,7 @@ class MadHatterNG(plugins.Plugin):
         a plugin that's loaded-but-not-ready degrades to a skipped, logged
         notification instead of an AttributeError."""
         try:
-            target = plugins.loaded.get("apprise_notify_ng")
+            target = plugins.loaded.get(self._opt("apprise_plugin_name", "apprise_notify_ng"))
             if target is None:
                 return False
             queue_fn = getattr(target, "_queue_notification", None)
@@ -1710,7 +1748,7 @@ class MadHatterNG(plugins.Plugin):
         own worker thread rather than blocking this poll loop on an HTTP
         call."""
         try:
-            target = plugins.loaded.get("discord_ng")
+            target = plugins.loaded.get(self._opt("discord_plugin_name", "discord_ng"))
             if target is None:
                 return False
             queue_fn = getattr(target, "_queue_notification", None)

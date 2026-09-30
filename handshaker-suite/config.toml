@@ -35,11 +35,11 @@ enabled = false
 # ---------------------------------------------------------------------
 # Where your handshake captures live
 # ---------------------------------------------------------------------
-# Matches the original plugin's hardcoded "/root/handshakes" as the
-# default, so out-of-the-box behavior is unchanged if you don't touch this -
-# it's just a real, editable option now instead of being baked into the code
-# in two separate places.
-data_path = "/root/handshakes"
+# The original plugin hardcoded "/root/handshakes" (the legacy/upstream
+# path) in two places. Defaults here to this fork's actual real
+# handshake directory, "/etc/pwnagotchi/handshakes" - it's a real,
+# editable option now either way. Override if yours differs.
+data_path = "/etc/pwnagotchi/handshakes"
 
 # ---------------------------------------------------------------------
 # sync_to_boot - the original's always-on boot-time sync behavior
