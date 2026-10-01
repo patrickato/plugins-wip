@@ -82,6 +82,60 @@ doing a `plugins.loaded.get(...)` lookup of its own should follow the
 four steps above from the start, rather than shipping a hardcoded name
 and needing this same fix applied to it later.
 
+## The `authorized_networks` allowlist
+
+**What it's for:** any suite whose actual effect - sending real frames,
+or running a password-cracking tool against a captured handshake - must
+never touch a network the user doesn't explicitly own or have
+permission to test. This is the single safety mechanism for that whole
+class of suite, not a style nicety.
+
+**The mechanism, now applied in `wifi-jammer-suite` (`wifi_jammer_ng.py`)
+and `crack-pipeline-suite` (`crack_pipeline_ng.py`):**
+
+1. **One config option, `authorized_networks`, a list, empty by
+   default.** Empty means total inaction for whatever the suite's real
+   effect is - `wifi_jammer_ng.py` never calls `agent.run('wifi.deauth
+   ...')`, `crack_pipeline_ng.py` never invokes `hcxpcapngtool`/
+   `hashcat` - no matter what else the suite does (both still log/
+   classify/display around that gate; only the actual effect is held
+   back).
+2. **Each entry can be a BSSID or an SSID**, auto-detected with one
+   shared module-level regex:
+   ```python
+   _MAC_RE = re.compile(r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$")
+   ```
+   A `_load_targets()` method splits the configured list once into two
+   sets - `self._authorized_macs` (uppercase-normalized) and
+   `self._authorized_ssids` (lowercase-normalized) - and a `_match`/
+   `_is_authorized` helper checks an AP dict's `mac`/`hostname` against
+   those sets. BSSID matching is the precise, unambiguous form; SSID
+   matching is offered purely for convenience on hardware the user
+   already controls.
+3. **Call `_load_targets()` from both `on_loaded` and
+   `on_config_changed`**, so editing the list and reloading config takes
+   effect without a full plugin/process restart.
+4. **Normalize the AP argument before matching it**, via each suite's
+   own `_as_ap_dict(ap)` helper - `on_handshake`'s (and, for
+   `wifi_jammer_ng.py`, `on_association`'s) AP argument can arrive as
+   either a full dict or a bare MAC string on this fork, confirmed
+   against the real cloned `agent.py`. Calling `.get()` on a bare string
+   raises `AttributeError` and silently drops the event - every
+   suite adopting this allowlist pattern must normalize first, on every
+   single path that reads the AP argument, not just some of them.
+5. **Log how many BSSIDs/SSIDs were loaded, once, at `on_loaded`** -
+   WARNING if the list is empty (so a user who forgot to configure
+   anything sees it immediately in the log, not just silent inaction),
+   INFO with the counts otherwise.
+
+**Suites that could adopt this in the future:** any new suite whose real
+effect must be scoped to networks the user owns - not just active
+radio-transmitting plugins, but also, as `crack-pipeline-suite`'s own
+`NOTES.md` discusses at length, any plugin that runs a cracking tool
+against an already-captured file. "It's just local post-processing, not
+radio behavior" is explicitly not a valid reason to skip this pattern -
+see that suite's NOTES.md for the full argument.
+
 ## Other established repo-wide conventions (for reference)
 
 These predate this file and are documented in more depth in their own

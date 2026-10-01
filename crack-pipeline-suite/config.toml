@@ -1,0 +1,132 @@
+# CrackPipelineNG - add this block to /etc/pwnagotchi/config.toml
+#
+# ============================================================================
+# FOR YOUR OWN AUTHORIZED NETWORKS ONLY. READ THIS BEFORE ENABLING.
+# ============================================================================
+# This plugin runs hashcat against captured WiFi handshakes. authorized_networks
+# is EMPTY by default on purpose: an empty list means this plugin still
+# classifies every capture (so you get .route sidecar files telling you WEP
+# from open from WPA/WPA2/PMKID) but will NEVER run hcxpcapngtool or hashcat
+# against anything. That list - not "it's just local file processing" - is
+# what keeps this plugin scoped to networks you actually own or have explicit
+# permission to test. Running hashcat against a captured handshake from a
+# network that isn't yours is an unauthorized password-cracking attempt
+# against someone else's network, even though it never touches a radio
+# directly - do not add anything here that isn't yours.
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly.
+#
+# IMPORTANT - the section name below is [main.plugins.crack_pipeline_ng],
+# matching the plugin FILE's exact basename (crack_pipeline_ng.py), NOT the
+# class name (CrackPipelineNG). This fork's loader registers and looks up a
+# plugin's "enabled" flag and its options table by the file's exact basename
+# - a section spelled any other way would never load at all. See NOTES.md.
+#
+# WHAT THIS PLUGIN DOES: merges four of this project's own
+# hand-written plugins (ClaudeCrackAuto, RuleMutationCrack,
+# HashFormatDetector, best_quickdic) into one pipeline. Every capture gets
+# classified (WEP / open / WPA) with a .route sidecar file written next to
+# it. Only WPA/WPA2/PMKID captures from a network listed in
+# authorized_networks below ever get converted and run through hashcat - a
+# plain wordlist pass, then (if that fails) a rule-mutation pass - or, if
+# run_local is false, just exported as a .hc22000 file for you to crack
+# elsewhere. See README.md/NOTES.md for the full design writeup.
+
+[main.plugins.crack_pipeline_ng]
+enabled = true
+
+# ---------------------------------------------------------------------
+# authorized_networks - the real safety gate (see the big warning above)
+# ---------------------------------------------------------------------
+# >>> USER INPUT REQUIRED <<<
+# List every network this plugin is allowed to run hcxpcapngtool/hashcat
+# against - and ONLY those. Classification (.route sidecar files) still
+# happens for every capture regardless of this list; it's the actual
+# cracking that's gated. Each entry can be either:
+#   - a BSSID (the AP's MAC address, e.g. "AA:BB:CC:DD:EE:FF") - precise,
+#     unambiguous, identifies one specific radio you own.
+#   - an SSID (the network's name, e.g. "MyHomeNetwork") - easier to type,
+#     matched case-insensitively, but less precise than a BSSID.
+# Example (replace with your own network before enabling cracking):
+# authorized_networks = ["AA:BB:CC:DD:EE:FF", "MyHomeNetwork"]
+authorized_networks = []
+
+# ---------------------------------------------------------------------
+# Wordlists and rule-based mutation pass
+# ---------------------------------------------------------------------
+# Folder of *.txt wordlists - every file in it is tried in turn (sorted by
+# name) against an authorized capture. The four originals disagreed across
+# /root/wordlists/ and /home/pi/wordlists/, with no attempt made to
+# standardize - this default follows this repo's established
+# /etc/pwnagotchi/...-rooted path convention instead. Put rockyou.txt (or
+# whatever lists you use) here.
+wordlist_folder = "/etc/pwnagotchi/wordlists"
+
+# Cap how many wordlists are tried per capture, in each of the plain and
+# rule-based passes. 0 = no limit (try every *.txt file found).
+max_wordlists_per_run = 0
+
+# Per-wordlist timeout (seconds) for the plain pass.
+per_wordlist_timeout_secs = 300
+
+# Hashcat rule file for the second ("mutation") pass, tried only if the
+# plain pass against every configured wordlist finds nothing. best64.rule
+# ships with hashcat on most installs and is a reasonable default (fast,
+# decent coverage of appended digits/casing/l33t-speak substitutions);
+# dive.rule is much larger/slower but more thorough. If this file doesn't
+# exist, the rule-based pass is skipped (logged, not an error).
+rules_file = "/usr/share/hashcat/rules/best64.rule"
+
+# Per-wordlist timeout (seconds) for the rule-based pass. Higher than the
+# plain pass by default since a rule file multiplies the candidate count.
+rule_pass_timeout_secs = 1800
+
+# ---------------------------------------------------------------------
+# Conversion / local cracking vs. export-only
+# ---------------------------------------------------------------------
+# Timeout (seconds) for the hcxpcapngtool conversion step.
+convert_timeout_secs = 120
+
+# true (default): run hashcat directly on this device against
+# wordlist_folder, as described above.
+# false: stop after conversion - the .hc22000 file is left in export_dir
+# for you to grab and crack on another machine (e.g. a PC with a GPU).
+# Useful on slower hardware (Pi Zero/3) where local hashcat runs are
+# impractical.
+run_local = true
+
+# Where converted .hc22000 files (and hashcat's own .cracked output) are
+# written. One unified default, replacing the four originals' scattered
+# per-plugin folders.
+export_dir = "/etc/pwnagotchi/crack_pipeline_ng/exports"
+
+# Where this plugin's own human-readable results log is written.
+log_file = "/etc/pwnagotchi/crack_pipeline_ng/results.log"
+
+# ---------------------------------------------------------------------
+# Notifications - delegated to apprise-notify-suite, not reimplemented here
+# ---------------------------------------------------------------------
+# false by default: nothing happens, not even a lookup of the sibling
+# plugin below, until you opt in.
+notify_enabled = false
+
+# The file basename (no .py) of the Apprise notification plugin to push
+# results through. Defaults to this repo's apprise-notify-suite. Change
+# this only if you've renamed that plugin's file or are running a
+# differently-named fork of it - see CONVENTIONS.md's "Looking up a
+# sibling plugin" section for why this is a config option rather than a
+# hardcoded name.
+apprise_plugin_name = "apprise_notify_ng"
+
+# ---------------------------------------------------------------------
+# On-screen status (pwnagotchi's e-ink display)
+# ---------------------------------------------------------------------
+# Shows queue depth and the last result, e.g. "Q:2 cracking" / "Q:0 idle".
+show_on_screen = true
+
+# Position, in pixels. Checked against every other suite's own default
+# position in this repo at the time this was built - no collision found,
+# but always double-check against whatever other suites you actually run.
+position_x = 0
+position_y = 150
