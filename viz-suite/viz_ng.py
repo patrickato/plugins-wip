@@ -6,8 +6,14 @@ from functools import lru_cache
 from math import pi, cos, sin
 from threading import Lock
 
-import plotly
-import plotly.graph_objects as go
+try:
+    import plotly
+    import plotly.graph_objects as go
+    _PLOTLY_AVAILABLE = True
+except Exception:  # plotly not installed on this host - load inert, don't crash
+    plotly = None
+    go = None
+    _PLOTLY_AVAILABLE = False
 from flask import render_template_string, abort, jsonify
 
 import pwnagotchi.plugins as plugins
@@ -146,6 +152,7 @@ class VizNG(plugins.Plugin):
     __description__ = "Visualizes the surrounding APs and their clients as a graph."
     __name__ = "VizNG"
     __help__ = __description__
+    __dependencies__ = {"pip": ["plotly"]}
 
     COLORS = [
         "aliceblue", "aqua", "aquamarine", "azure", "beige", "bisque",
@@ -251,6 +258,13 @@ class VizNG(plugins.Plugin):
 
     def on_loaded(self):
         logging.info("[VizNG] plugin loaded")
+        if not _PLOTLY_AVAILABLE:
+            logging.warning(
+                "[VizNG] the 'plotly' package is not installed, so the graph "
+                "endpoint is disabled (the plugin still loads). Install it in "
+                "the pwnagotchi venv (e.g. sudo /opt/.pwn/bin/pip install "
+                "plotly) and restart to enable the AP/client visualization."
+            )
 
     @staticmethod
     def lookup_color(node):
@@ -380,6 +394,11 @@ class VizNG(plugins.Plugin):
             return render_template_string(html)
 
         if path == "update":
+            if not _PLOTLY_AVAILABLE:
+                return jsonify({
+                    "error": "viz requires the 'plotly' package; install it in "
+                             "the pwnagotchi venv and restart to enable the graph."
+                })
             with self.lock:
                 cracked = self._cracked_hostnames()
                 g = VizNG.create_graph(self.data, self.channel, cracked)

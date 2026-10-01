@@ -449,6 +449,36 @@ check("on_webhook doesn't crash for content_source='reddit'", ok37)
 check("on_webhook (reddit) reports a real last-refresh time, not 'never'", "never" not in page37)
 
 
+# --- REGRESSION: a Display lacking the is_*() hardware helpers (jayofelony's
+#     fork has no is_waveshare27inch()) must NOT raise AttributeError in
+#     on_ui_setup; it must fall through to the generic (0, 91). This is the
+#     exact crash that killed load on the real Pi. ---
+class _BareUI:
+    """A minimal UI with NO is_*() hardware-detect helpers at all."""
+    def __init__(self):
+        self.elements = {}
+
+    def add_element(self, key, elem):
+        self.elements[key] = elem
+
+    def set(self, key, value):
+        pass
+
+
+p_bare = make_plugin()  # no explicit position -> hits the hardware table
+ui_bare = _BareUI()
+try:
+    p_bare.on_ui_setup(ui_bare)
+    bare_ok = True
+except Exception:
+    bare_ok = False
+check("on_ui_setup does NOT crash on a Display with no is_*() helpers (the real-Pi bug)", bare_ok)
+check(
+    "a Display with no is_*() helpers falls through to the generic (0, 91)",
+    mod.ELEMENT_NAME in ui_bare.elements and ui_bare.elements[mod.ELEMENT_NAME].xy == (0, 91),
+)
+
+
 print(f"\n{len(failures)} failure(s) out of test run")
 if failures:
     sys.exit(1)

@@ -201,3 +201,14 @@ element construction; reactive rotation firing for bored/lonely/sad
 regardless of `content_source`; `on_unload` removing the element cleanly
 (and being safe if it was never added); and the `on_webhook` status page
 rendering without crashing under both reddit and local content sources.
+
+## Real-hardware fix (2026-10-01, Pi batch-3a)
+
+Live-load on the Pi crashed plugin load: `on_ui_setup` -> `_position()` called
+`ui.is_waveshare27inch()`, which does not exist on jayofelony's `Display`
+(AttributeError, unhandled). Fixed: `_position()` now probes every `ui.is_*()`
+hardware helper defensively via `getattr`, so a missing/raising helper returns
+False and falls through to the generic `(0, 91)` instead of crashing. Also set an
+explicit `position_x=0 / position_y=91` in `config.toml` for the 480x320 MPI3501
+so placement is deterministic and skips auto-detect entirely. Regression test
+added (`_BareUI` with no `is_*()` helpers must not raise, must land at (0,91)).

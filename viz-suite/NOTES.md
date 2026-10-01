@@ -129,3 +129,13 @@ Changed to `/etc/pwnagotchi/handshakes` to match crack-house-suite's
 own updated `saving_path` default, so the already-cracked-network
 cross-referencing still works out of the box between the two suites.
 Still fully overridable.
+
+## Real-hardware fix (2026-10-01, Pi batch-3a)
+
+Live-load on the Pi: the framework skipped the plugin with `No module named
+'plotly'` - plotly was imported hard at module top. Fixed: plotly import is now
+`try/except` guarded (`_PLOTLY_AVAILABLE`), so the plugin LOADS even without
+plotly; `on_loaded` logs a one-time WARNING telling the user how to install it,
+and the `update` webhook returns a clear JSON error instead of crashing. Added
+`__dependencies__ = {"pip": ["plotly"]}`. Install to enable the graph:
+`sudo /opt/.pwn/bin/pip install plotly` then restart.

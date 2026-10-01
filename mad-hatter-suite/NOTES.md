@@ -386,3 +386,12 @@ a WARNING telling you the configured name wasn't found and to check
 `apprise_plugin_name`/`discord_plugin_name`. This only runs when
 `notify_on_threshold` is enabled - it doesn't add log noise for the
 common case where threshold notifications are off.
+
+## Real-hardware fix (2026-10-01, Pi batch-3a)
+
+Live-load on the Pi (no UPS HAT connected, empty I2C bus): `_try_init` retried
+every 60s and logged a WARNING each time - indefinite log spam. Fixed: the retry
+now uses exponential backoff (60s -> ... -> 30min cap) and only logs at WARNING
+when the interval actually changes (repeats drop to DEBUG); a later successful
+init resets the backoff so a plug/replug starts fresh at the short interval. It
+still auto-detects the HAT when it appears, just quietly.

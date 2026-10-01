@@ -127,10 +127,12 @@ max_length = 60
 # Screen position
 # ---------------------------------------------------------------------
 # Explicit override - when BOTH are set, they win outright over the
-# per-hardware table below. Leave both unset (default) to use that table
-# instead.
-# position_x = 0
-# position_y = 112
+# per-hardware table below. Leave both unset to use that table instead.
+# Set explicitly for the 480x320 MPI3501 TFT (the generic-panel default),
+# so placement is deterministic and never depends on display auto-detect.
+# Negative position_x = pixels in from the right edge (repo-wide convention).
+position_x = 0
+position_y = 91
 
 # Personality states that immediately rotate to a new message, on top of
 # the normal rotate_interval_seconds timer. Applies no matter what

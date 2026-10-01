@@ -1357,6 +1357,8 @@ class MadHatterNG(plugins.Plugin):
         self._status_text = "..."
         self._init_error = None
         self._next_init_retry = 0.0
+        self._init_fail_count = 0
+        self._init_retry_delay = 0
         self._low_since = None
         self._low_polls = 0
         self._last_warning_log = 0.0
@@ -1496,12 +1498,29 @@ class MadHatterNG(plugins.Plugin):
         except Exception as exc:
             self.ups = None
             self._init_error = str(exc)
-            self._next_init_retry = time.monotonic() + 60
+            # Exponential backoff so a permanently-absent UPS (empty I2C bus)
+            # doesn't log a WARNING every 60s forever. Keep retrying - the HAT
+            # may be plugged in later - but widen the gap 60s -> ... -> 30min
+            # cap, and only log at WARNING when the interval actually changes
+            # (the repeats in between drop to DEBUG). A later success resets
+            # this back to the short interval.
+            self._init_fail_count += 1
+            prev_delay = self._init_retry_delay
+            delay = min(60 * (2 ** (self._init_fail_count - 1)), 1800)
+            self._init_retry_delay = delay
+            self._next_init_retry = time.monotonic() + delay
             with self._lock:
                 self._status_text = "NO UPS"
-            logging.warning("%s init failed (retry in 60s): %s", LOG, exc)
+            if delay != prev_delay:
+                logging.warning("%s init failed (retry in %ds): %s", LOG, delay, exc)
+            else:
+                logging.debug("%s init still failing (retry in %ds): %s", LOG, delay, exc)
             return False
 
+        # init succeeded - clear the backoff so a later unplug/replug starts
+        # fresh at the short retry interval again.
+        self._init_fail_count = 0
+        self._init_retry_delay = 0
         state = self._load_state()
         self.ups.cycle_counter.cycles = int(state.get("cycles", 0) or 0)
         self.ups.cycle_counter.discharged_mah = float(state.get("discharged_mah", 0) or 0)

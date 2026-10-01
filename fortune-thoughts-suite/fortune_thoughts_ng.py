@@ -173,13 +173,28 @@ class FortuneThoughtsNG(plugins.Plugin):
         if x is not None and y is not None:
             return (x, y)
 
-        if ui.is_waveshare_v2() or ui.is_waveshare_v3() or ui.is_waveshare_v1():
+        # Per-hardware auto-detect fallback. These ui.is_*() helpers vary by
+        # fork and display driver and are NOT all present on every build
+        # (jayofelony's Display, for one, has no is_waveshare27inch()), so
+        # probe each defensively - a missing or raising helper must never turn
+        # position lookup into an unhandled AttributeError inside on_ui_setup,
+        # which would crash plugin load entirely (it did: see NOTES.md).
+        def _ui_is(name):
+            fn = getattr(ui, name, None)
+            if not callable(fn):
+                return False
+            try:
+                return bool(fn())
+            except Exception:
+                return False
+
+        if _ui_is("is_waveshare_v2") or _ui_is("is_waveshare_v3") or _ui_is("is_waveshare_v1"):
             return (0, 95)
-        elif ui.is_waveshare144lcd():
+        elif _ui_is("is_waveshare144lcd"):
             return (0, 92)
-        elif ui.is_inky():
+        elif _ui_is("is_inky"):
             return (0, 83)
-        elif ui.is_waveshare27inch():
+        elif _ui_is("is_waveshare27inch"):
             return (0, 153)
         else:
             return (0, 91)
