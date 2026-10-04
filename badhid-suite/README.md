@@ -78,6 +78,37 @@ DuckyScript-subset runner.
    shows the control URL at WARNING, e.g.
    `[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
 
+## Safe install & full restore (recommended)
+
+Three helper scripts make the install reversible. Run them from inside this
+`badhid-suite/` folder on the Pi:
+
+- **`badhid_backup.sh`** — snapshots `config.toml` + `custom-plugins/` into
+  `/etc/pwnagotchi/badhid_backups/` (tarball + a bare config copy). Handshakes
+  are not touched or backed up (large, irrelevant).
+- **`badhid_install.sh`** — the safe installer: backs up first, copies the
+  plugin + payloads (additive — your other plugins are untouched), appends the
+  `[main.plugins.badhid_ng]` block with a **freshly generated random token** and
+  `enabled = false`, then **validates `config.toml` parses and auto-rolls-back
+  the config from the backup if it doesn't.** It does *not* bring up the gadget
+  or enable anything — those stay your deliberate steps.
+- **`badhid_restore.sh`** — one-command undo: tears the runtime gadget down,
+  removes `badhid_ng.py`, restores `config.toml` + `custom-plugins/` from the
+  newest backup, restarts pwnagotchi. `--reboot` to reboot after.
+
+```bash
+cd ~/plugins-wip/badhid-suite
+sudo ./badhid_install.sh        # backup + install, prints your token + undo cmd
+# ...test (see below)...
+sudo ./badhid_restore.sh        # full undo, if you want it gone
+```
+
+**Why this is safe to try:** your Pi is managed over **ethernet**, so losing
+`usb0` can't lock you out; the gadget change is **runtime-only** (configfs), so
+a plain `sudo reboot` already restores the original USB gadget; `config.toml` is
+backed up and the edit is validated with auto-rollback; and the plugin is a
+single added file. Worst-case total reset: `sudo ./badhid_restore.sh --reboot`.
+
 ## The demo payloads (all harmless)
 
 The suite ships three proof-of-life payloads. None of them run a command,
