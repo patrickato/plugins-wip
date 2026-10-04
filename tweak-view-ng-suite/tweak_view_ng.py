@@ -546,10 +546,10 @@ def import_legacy(data):
 
 
 class TweakViewNG(plugins.Plugin):
-    __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
+    __author__ = "patrickato"
     __version__ = "0.2.0-beta1"
     __license__ = "GPL3"
-    __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
+    __description__ = "Tweak View NG - an independent, hardened, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8/2.9.5.9. A separate plugin, not the original Tweak View / Tweak View 2 (concept lineage credited in the README)."
 
     DEFAULTS = {"filename": "/etc/pwnagotchi/tweak_view_ng.json", "legacy_filename": "/etc/pwnagotchi/tweak_view.json", "auto_import_legacy": True, "backup": True, "history_limit": 50, "strict_version": False}
 

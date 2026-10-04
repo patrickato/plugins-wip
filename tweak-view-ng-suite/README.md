@@ -11,14 +11,20 @@ editing a single config file by hand or touching Pwnagotchi's core.
   hardware-tested on a Pi 4 with a 3.5" 480×320 TFT.
 - **Version:** 0.2.0-beta1.
 
+> **This is a separate, independent plugin** — not the original *Tweak View* or
+> *Tweak View 2*, and not a patch on top of them. It installs as its own plugin
+> (`tweak_view_ng`), with its own config section, URL and layout file, so it can
+> sit alongside anything else without conflict. It can *import* an old Tweak View
+> layout so you don't start from scratch, but it never touches the old file.
+> Concept credit to the original authors is in [Credits](#credits--license).
+
 ---
 
 ## Contents
 
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
-- [Install (one line)](#install-one-line)
-- [Install (manual)](#install-manual)
+- [Install — pick any method](#install--pick-any-method)
 - [Opening the editor](#opening-the-editor)
 - [Using the editor](#using-the-editor)
 - [The recovery editor](#the-recovery-editor)
@@ -64,46 +70,66 @@ Tweak View NG gives you a live, browser-based editor for your Pwnagotchi's displ
 
 ---
 
-## Install (one line)
+## Install — pick any method
 
-SSH into your Pwnagotchi and run:
+All of these end up in the same place. SSH into your Pwnagotchi first. If you're
+new, use **Method 1**.
+
+### Method 1 — one-line installer (recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/patrickato/plugins-wip/main/tweak-view-ng-suite/install.sh | sudo sh
 ```
 
-The installer is **plug-and-play**. It will:
+The installer is **plug-and-play**. It finds your plugin directory automatically
+(reads `custom_plugins` from your `config.toml`, falling back to the default),
+backs up any existing copy, downloads and installs `tweak_view_ng.py`, adds a
+`[main.plugins.tweak_view_ng]` section **only if one isn't there already** (it
+never overwrites settings you've set), restarts Pwnagotchi, and prints the editor
+URL. When it finishes, open the URL it shows you. Done.
 
-1. Find your plugin directory automatically (it reads `custom_plugins` from your
-   `config.toml`, falling back to the default `/etc/pwnagotchi/custom-plugins/`).
-2. Back up any existing copy of the plugin.
-3. Download and install `tweak_view_ng.py`.
-4. Add an `[main.plugins.tweak_view_ng]` section to your `config.toml` **if one
-   isn't there already** (it never overwrites settings you've set).
-5. Restart Pwnagotchi and print the editor URL.
+> **Prefer to read before you run?** It's short, plain `sh` — open `install.sh`
+> first, or download and run it manually.
 
-When it finishes, open the URL it shows you. Done.
+### Method 2 — one-line installer with `wget`
 
-> **Prefer to read before you run?** The script is short and plain `sh`; open
-> `install.sh` in this folder first. You can also download it, inspect it, and run
-> it manually.
+Same thing, for systems that have `wget` but not `curl`:
 
----
+```bash
+wget -qO- https://raw.githubusercontent.com/patrickato/plugins-wip/main/tweak-view-ng-suite/install.sh | sudo sh
+```
 
-## Install (manual)
+### Method 3 — clone the repo and run it
 
-If you'd rather do it by hand:
+Good if you want to read everything first, or grab other plugins too:
 
-1. **Copy the plugin** into your custom-plugins directory (default shown):
+```bash
+git clone https://github.com/patrickato/plugins-wip
+cd plugins-wip/tweak-view-ng-suite
+sudo sh install.sh
+```
+
+(The installer uses the local `tweak_view_ng.py` next to it — no re-download.)
+
+### Method 4 — just drop in the plugin file
+
+If you'd rather handle config yourself, download only the plugin into your
+plugins directory (default path shown — check yours with
+`grep custom_plugins /etc/pwnagotchi/config.toml`):
+
+```bash
+sudo curl -fsSL -o /etc/pwnagotchi/custom-plugins/tweak_view_ng.py \
+  https://raw.githubusercontent.com/patrickato/plugins-wip/main/tweak-view-ng-suite/tweak_view_ng.py
+```
+
+Then do the config + restart from **Method 5**, steps 2–3.
+
+### Method 5 — fully manual
+
+1. **Copy the plugin** into your custom-plugins directory:
 
    ```bash
    sudo cp tweak_view_ng.py /etc/pwnagotchi/custom-plugins/
-   ```
-
-   Not sure where yours is? Check `config.toml`:
-
-   ```bash
-   grep custom_plugins /etc/pwnagotchi/config.toml
    ```
 
 2. **Enable it** in `/etc/pwnagotchi/config.toml` (see `config.toml.example`):
@@ -125,6 +151,25 @@ If you'd rather do it by hand:
    ```bash
    sudo systemctl restart pwnagotchi
    ```
+
+### Method 6 — jayofelony plugin-repo list (advanced)
+
+Jayofelony can pull plugins from repo archives listed in `config.toml`. Add this
+repo's archive, then update:
+
+```toml
+main.custom_plugin_repos = [
+  "https://github.com/patrickato/plugins-wip/archive/main.zip",
+]
+```
+
+```bash
+sudo pwnagotchi plugins update
+```
+
+Then enable `tweak_view_ng` as in Method 5, step 2, and restart. (Methods 1–3 are
+more direct; this one is handy if you already manage plugins through
+`custom_plugin_repos`.)
 
 ---
 
