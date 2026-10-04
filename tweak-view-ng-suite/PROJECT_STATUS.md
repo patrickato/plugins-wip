@@ -2,11 +2,21 @@
 
 ## Identity
 
-This is a **separate project** from the existing `tweak-view-suite` in this repository. Do not merge, overwrite, or treat that older suite as the working tree for this project.
+This is a **separate project** from the existing `tweak-view-suite` in this repository. Do not merge, overwrite, delete, join, or treat that older suite as the working tree for this project.
 
 Project directory: `tweak-view-ng-suite/`
 Current release: `0.1.0-alpha1`
 Primary software target: **Jayofelony Pwnagotchi 2.9.5.8 64-bit**
+
+### Permanent separation rule
+
+`tweak-view-suite/` and `tweak-view-ng-suite/` must remain independent projects with their own source, tests, config, documentation, release history, and development paths.
+
+While working on NG, do not modify files under `tweak-view-suite/` unless the repository owner explicitly requests separate work on that project.
+
+NG may study behavior or lessons from Suite and independently reimplement useful ideas, but the projects are not to be merged or overlaid.
+
+See `SEPARATION_AND_SUITE_HARVEST.md` for the full rule and the approved NG-native ideas identified from comparison with Suite.
 
 ## Goal
 
@@ -49,6 +59,23 @@ Implemented in 0.1.0-alpha1:
 - unload restoration and NG custom-shape cleanup
 - offline editor with no CDN dependency
 
+## Suite-harvest gate before hardware validation
+
+Useful lessons from the separate `tweak-view-suite/` have been documented for independent NG implementation. This does **not** authorize merging the projects.
+
+Planned NG-native additions:
+
+1. real Jayofelony framework/plugin-loader integration tests;
+2. earlier layout/config preload and validation;
+3. per-entry corruption recovery and explicit import reports;
+4. deliberate startup/not-ready API and editor state;
+5. stronger transactional edit/save rollback behavior;
+6. HTML/DOM injection regression tests;
+7. historical Tweak View/Tweak View 2 configuration fixtures;
+8. optional minimal server-rendered recovery editor.
+
+These should be implemented only in `tweak-view-ng-suite/` and tested independently.
+
 ## Test state
 
 Desktop/simulated alpha result: **PASS — 32/32 pytest tests**.
@@ -74,7 +101,7 @@ Simulated screen matrix:
 
 ## Next release gate
 
-The project remains **alpha** until real-hardware validation is complete.
+The project remains **alpha** until the Suite-harvest hardening items and real-hardware validation are complete.
 
 First physical target:
 
@@ -98,6 +125,6 @@ Physical checks still required:
 
 ## Release path
 
-`0.1.0-alpha1` -> Pi 4/480x320 validation -> fixes -> `0.2.0-beta1` -> broader Pi/display validation -> stable `1.0.0`.
+`0.1.0-alpha1` -> Suite-harvest hardening -> Pi 4/480x320 validation -> fixes -> `0.2.0-beta1` -> broader Pi/display validation -> stable `1.0.0`.
 
 Do not mark stable merely because sandbox tests pass. Maintain explicit `PASS`, `SIMULATED PASS`, and `NOT TESTED` labels in future reports.
