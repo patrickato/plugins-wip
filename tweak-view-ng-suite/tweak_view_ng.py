@@ -34,6 +34,19 @@ INT_PROPS = {"label_spacing", "max_length", "width", "color", "bgcolor", "fill"}
 BOOL_PROPS = {"wrap"}
 
 
+class _HttpResult(Exception):
+    """Carries an intended HTTP response out of a mutation handler.
+
+    Used so a deliberate 4xx (bad input, unknown element, name collision) is
+    returned verbatim rather than being treated as a failed edit and rolled
+    back by _mutating_route(). It is raised *before* any state mutation.
+    """
+
+    def __init__(self, value):
+        super().__init__("http-result")
+        self.value = value
+
+
 class Ellipse(Widget):
     def __init__(self, xy, color=0, width=1, fill=None):
         super().__init__(xy, color)
@@ -336,6 +349,32 @@ class LayoutStore:
         data["profiles"].setdefault("default", {"edits": {}, "shapes": {}})
         return data
 
+    def load_report(self):
+        """Load the NG layout with per-entry corruption recovery.
+
+        Harvest item 3: a malformed profile/element/property must not invalidate
+        an otherwise healthy layout. Returns ``(layout, report)`` where report is
+        ``{"ok": bool, "recovered": [...], "skipped": [{reason, ...}], ...}``.
+
+        Fatal problems that make *nothing* recoverable (file unreadable, not an
+        object, incompatible schema) still raise - the caller falls back to an
+        empty layout and records the fatal reason.
+        """
+        if not os.path.isfile(self.filename):
+            return self.empty(), {"ok": True, "source": self.filename, "present": False,
+                                  "recovered": [], "skipped": []}
+        with open(self.filename, "r", encoding="utf-8") as handle:
+            data = json.load(handle)  # JSON syntax error here is fatal (caller recovers)
+        if not isinstance(data, dict):
+            raise ValueError("layout file must contain a JSON object")
+        if data.get("schema") != SCHEMA_VERSION:
+            raise ValueError("unsupported layout schema: %r" % data.get("schema"))
+        clean, report = sanitize_layout(data, self.empty())
+        report["ok"] = True
+        report["source"] = self.filename
+        report["present"] = True
+        return clean, report
+
     def save(self, data):
         parent = os.path.dirname(self.filename) or "."
         os.makedirs(parent, exist_ok=True)
@@ -358,26 +397,151 @@ class LayoutStore:
                 os.unlink(tmp)
 
 
-def import_legacy(data):
+VALID_SHAPE_TYPES = {"line", "rect", "filled_rect", "ellipse", "filled_ellipse"}
+
+
+def sanitize_layout(data, fallback):
+    """Return ``(clean_layout, report)`` keeping every valid profile/entry.
+
+    Harvest item 3. A malformed profile, element edit-map, or shape is dropped
+    with an explicit reason rather than discarding the whole file. ``fallback``
+    supplies default top-level keys (schema/target/active_profile/meta).
+    """
+    report = {"recovered": [], "skipped": []}
+    clean = {
+        "schema": fallback["schema"],
+        "target": data.get("target", fallback["target"]),
+        "active_profile": data.get("active_profile", "default"),
+        "profiles": {},
+        "meta": data.get("meta", {}) if isinstance(data.get("meta"), dict) else {},
+    }
+    profiles = data.get("profiles")
+    if not isinstance(profiles, dict):
+        report["skipped"].append({"scope": "profiles", "reason": "profiles is not an object"})
+        profiles = {}
+    for pname, pbody in profiles.items():
+        if not isinstance(pname, str) or not pname:
+            report["skipped"].append({"scope": "profile", "profile": repr(pname), "reason": "invalid profile name"})
+            continue
+        if not isinstance(pbody, dict):
+            report["skipped"].append({"scope": "profile", "profile": pname, "reason": "profile body is not an object"})
+            continue
+        clean_profile = {"edits": {}, "shapes": {}}
+        # --- edits ---
+        edits = pbody.get("edits", {})
+        if not isinstance(edits, dict):
+            report["skipped"].append({"scope": "edits", "profile": pname, "reason": "edits is not an object"})
+            edits = {}
+        for element, props in edits.items():
+            if not isinstance(element, str) or not element:
+                report["skipped"].append({"scope": "element", "profile": pname, "element": repr(element), "reason": "invalid element name"})
+                continue
+            if not isinstance(props, dict):
+                report["skipped"].append({"scope": "element", "profile": pname, "element": element, "reason": "property map is not an object"})
+                continue
+            kept = {}
+            for prop, value in props.items():
+                if prop not in SAFE_PROPS:
+                    report["skipped"].append({"scope": "property", "profile": pname, "element": element, "property": prop, "reason": "property not in safe allow-list"})
+                    continue
+                kept[prop] = value
+            if kept:
+                clean_profile["edits"][element] = kept
+                report["recovered"].append({"scope": "element", "profile": pname, "element": element, "properties": sorted(kept.keys())})
+        # --- shapes ---
+        shapes = pbody.get("shapes", {})
+        if not isinstance(shapes, dict):
+            report["skipped"].append({"scope": "shapes", "profile": pname, "reason": "shapes is not an object"})
+            shapes = {}
+        for sname, spec in shapes.items():
+            if not isinstance(sname, str) or not sname or sname.startswith("__"):
+                report["skipped"].append({"scope": "shape", "profile": pname, "shape": repr(sname), "reason": "invalid shape name"})
+                continue
+            if not isinstance(spec, dict):
+                report["skipped"].append({"scope": "shape", "profile": pname, "shape": sname, "reason": "shape spec is not an object"})
+                continue
+            stype = spec.get("type")
+            if stype not in VALID_SHAPE_TYPES:
+                report["skipped"].append({"scope": "shape", "profile": pname, "shape": sname, "reason": "unknown shape type: %r" % (stype,)})
+                continue
+            sprops = spec.get("properties", {})
+            if not isinstance(sprops, dict):
+                report["skipped"].append({"scope": "shape", "profile": pname, "shape": sname, "reason": "shape properties is not an object"})
+                sprops = {}
+            clean_profile["shapes"][sname] = {"type": stype, "properties": dict(sprops)}
+            report["recovered"].append({"scope": "shape", "profile": pname, "shape": sname, "type": stype})
+        clean["profiles"][pname] = clean_profile
+    if "default" not in clean["profiles"]:
+        clean["profiles"]["default"] = {"edits": {}, "shapes": {}}
+    if clean["active_profile"] not in clean["profiles"]:
+        report["skipped"].append({"scope": "active_profile", "reason": "active profile %r missing; falling back to default" % (clean["active_profile"],)})
+        clean["active_profile"] = "default"
+    return clean, report
+
+
+def import_legacy_report(data):
+    """Convert a legacy Tweak View config to an NG profile, per-entry tolerant.
+
+    Harvest item 3. Returns ``(profile, report)``. Malformed custom shapes or
+    ``VSS.*`` entries are skipped with reasons; valid ones are preserved.
+    """
+    report = {"imported": [], "skipped": []}
     if not isinstance(data, dict):
-        raise ValueError("legacy config must be a JSON object")
+        # Non-dict legacy content yields an empty profile rather than throwing,
+        # so one bad file never blocks startup.
+        report["skipped"].append({"scope": "root", "reason": "legacy config is not a JSON object"})
+        return {"edits": {}, "shapes": {}}, report
     profile = {"edits": {}, "shapes": {}}
+    type_map = {"CustomLine": "line", "CustomRect": "rect", "CustomEllipse": "ellipse"}
     custom = data.get("__custom_shapes__", {})
-    if isinstance(custom, dict):
+    if custom and not isinstance(custom, dict):
+        report["skipped"].append({"scope": "__custom_shapes__", "reason": "not an object"})
+    elif isinstance(custom, dict):
         for name, old in custom.items():
+            if not isinstance(name, str) or not name:
+                report["skipped"].append({"scope": "shape", "shape": repr(name), "reason": "invalid shape name"})
+                continue
+            if not isinstance(old, dict):
+                report["skipped"].append({"scope": "shape", "shape": name, "reason": "shape entry is not an object"})
+                continue
             old_type = str(old.get("type", "CustomLine"))
-            type_map = {"CustomLine": "line", "CustomRect": "rect", "CustomEllipse": "ellipse"}
-            profile["shapes"][name] = {"type": type_map.get(old_type, "line"), "properties": dict(old.get("props") or {})}
+            mapped = type_map.get(old_type, "line")
+            props = old.get("props")
+            if props is not None and not isinstance(props, dict):
+                report["skipped"].append({"scope": "shape", "shape": name, "reason": "props is not an object"})
+                props = {}
+            profile["shapes"][name] = {"type": mapped, "properties": dict(props or {})}
+            report["imported"].append({"scope": "shape", "shape": name, "type": mapped})
     for key, value in data.items():
-        if not (isinstance(key, str) and key.startswith("VSS.")):
+        if not isinstance(key, str) or not key.startswith("VSS."):
             continue
         parts = key.split(".", 2)
         if len(parts) != 3:
+            report["skipped"].append({"scope": "legacy_key", "key": key, "reason": "not in VSS.<element>.<prop> form"})
             continue
         _, element, prop = parts
+        if not element:
+            report["skipped"].append({"scope": "legacy_key", "key": key, "reason": "empty element name"})
+            continue
         if prop not in SAFE_PROPS:
+            report["skipped"].append({"scope": "legacy_key", "key": key, "element": element, "property": prop, "reason": "property not in safe allow-list"})
             continue
         profile["edits"].setdefault(element, {})[prop] = value
+        report["imported"].append({"scope": "edit", "element": element, "property": prop})
+    return profile, report
+
+
+def import_legacy(data):
+    """Back-compatible wrapper returning just the converted profile.
+
+    Retained for callers/tests that only need the profile. Note: the legacy
+    behavior raised on a non-dict input; the tolerant path now returns an empty
+    profile instead, so this wrapper preserves the raise for that one case to
+    keep the original contract.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("legacy config must be a JSON object")
+    profile, _report = import_legacy_report(data)
     return profile
 
 
@@ -388,6 +552,13 @@ class TweakViewNG(plugins.Plugin):
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
     DEFAULTS = {"filename": "/etc/pwnagotchi/tweak_view_ng.json", "legacy_filename": "/etc/pwnagotchi/tweak_view.json", "auto_import_legacy": True, "backup": True, "history_limit": 50, "strict_version": False}
+
+    # Explicit lifecycle phases (harvest item 4). Ordered; higher = further along.
+    PHASE_INIT = "init"                  # constructed, options not yet merged
+    PHASE_LOADED = "loaded"              # on_loaded done: options merged, layout preloaded/validated from disk
+    PHASE_WAITING_UI = "waiting_ui"      # layout ready, waiting for on_ui_setup to supply the UI adapter
+    PHASE_READY = "ready"                # adapter built, profile applied; editor fully operational
+    _PHASE_ORDER = (PHASE_INIT, PHASE_LOADED, PHASE_WAITING_UI, PHASE_READY)
 
     def __init__(self):
         self.options = {}
@@ -402,6 +573,8 @@ class TweakViewNG(plugins.Plugin):
         self._fonts = {}
         self._pending_missing = set()
         self._last_error = None
+        self._phase = self.PHASE_INIT
+        self._load_report = None  # structured import/load report (harvest item 3)
 
     def _merge_options(self):
         merged = dict(self.DEFAULTS)
@@ -472,33 +645,84 @@ class TweakViewNG(plugins.Plugin):
         self._store.save(self._layout)
 
     def _maybe_import_legacy(self):
+        """Import a legacy Tweak View layout when no NG layout exists yet.
+
+        Per-entry tolerant (harvest item 3): a malformed entry is skipped and
+        reported rather than aborting the whole import. Returns an import report
+        dict, or None when no import was attempted.
+        """
         if os.path.isfile(self.options["filename"]):
-            return False
+            return None
         legacy = self.options.get("legacy_filename")
         if not self.options.get("auto_import_legacy", True) or not legacy or not os.path.isfile(legacy):
-            return False
+            return None
         try:
             with open(legacy, "r", encoding="utf-8") as handle:
                 old = json.load(handle)
-            converted = import_legacy(old)
-            self._layout = self._store.empty()
-            self._layout["profiles"]["default"] = converted
-            self._layout["meta"]["imported_legacy"] = legacy
-            self._layout["meta"]["imported_at"] = int(time.time())
-            self._save()
-            LOG.info("Tweak View NG: imported legacy layout from %s", legacy)
-            return True
         except Exception as exc:
-            LOG.warning("Tweak View NG: legacy import failed: %s", exc)
+            LOG.warning("Tweak View NG: legacy file unreadable: %s", exc)
             self._last_error = "Legacy import failed: %s" % exc
-            return False
+            return {"source": legacy, "ok": False, "fatal": str(exc),
+                    "imported": [], "skipped": []}
+        converted, report = import_legacy_report(old)
+        report["source"] = legacy
+        self._layout = self._store.empty()
+        self._layout["profiles"]["default"] = converted
+        self._layout["meta"]["imported_legacy"] = legacy
+        self._layout["meta"]["imported_at"] = int(time.time())
+        self._layout["meta"]["import_report"] = report
+        try:
+            self._save()
+        except Exception as exc:
+            LOG.warning("Tweak View NG: could not persist imported legacy layout: %s", exc)
+            self._last_error = "Imported legacy layout but save failed: %s" % exc
+        if report["skipped"]:
+            LOG.info("Tweak View NG: imported legacy layout from %s (%d entries, %d skipped)",
+                     legacy, len(report["imported"]), len(report["skipped"]))
+        else:
+            LOG.info("Tweak View NG: imported legacy layout from %s (%d entries)",
+                     legacy, len(report["imported"]))
+        return report
+
+    def _preload_layout(self):
+        """Load + validate the layout from disk as early as possible.
+
+        Harvest item 2: this runs in on_loaded(), before any UI object exists,
+        so layout data is parsed and validated before the first UI application
+        pass. No UI-dependent work happens here.
+        """
+        self._store = LayoutStore(self.options["filename"], bool(self.options.get("backup", True)))
+        try:
+            self._layout, load_report = self._store.load_report()
+        except Exception as exc:
+            # Only truly unrecoverable errors reach here (e.g. unreadable file).
+            self._last_error = "Layout load failed: %s" % exc
+            LOG.error("Tweak View NG: %s", self._last_error)
+            self._layout = self._store.empty()
+            load_report = {"ok": False, "fatal": str(exc), "recovered": [], "skipped": []}
+        import_report = self._maybe_import_legacy()
+        self._load_report = {"layout": load_report, "legacy_import": import_report}
+        self._phase = self.PHASE_WAITING_UI
 
     def on_loaded(self):
         self._merge_options()
         ver = getattr(pwnagotchi, "__version__", "unknown")
         if self.options.get("strict_version") and ver != "2.9.5.8":
             raise RuntimeError("Tweak View NG alpha targets Pwnagotchi 2.9.5.8; found %s" % ver)
-        LOG.info("Tweak View NG %s loaded (Pwnagotchi %s)", self.__version__, ver)
+        self._phase = self.PHASE_LOADED
+        # Preload layout from disk now, before any UI object is available.
+        try:
+            self._preload_layout()
+        except Exception as exc:
+            # Preload must never prevent the plugin from loading; fall back to
+            # an empty layout and surface the problem via the readiness payload.
+            self._last_error = "Layout preload failed: %s" % exc
+            LOG.exception("Tweak View NG: layout preload failed")
+            if self._store is None:
+                self._store = LayoutStore(self.options["filename"], bool(self.options.get("backup", True)))
+            self._layout = self._store.empty()
+            self._phase = self.PHASE_WAITING_UI
+        LOG.info("Tweak View NG %s loaded (Pwnagotchi %s); layout preloaded, awaiting UI", self.__version__, ver)
 
     def on_ready(self, agent):
         self._agent = agent
@@ -507,15 +731,22 @@ class TweakViewNG(plugins.Plugin):
         self._ui = ui
         self._build_fonts()
         self._adapter = JayUIAdapter(ui, self._fonts, LOG)
-        self._store = LayoutStore(self.options["filename"], bool(self.options.get("backup", True)))
-        try:
-            self._layout = self._store.load()
-        except Exception as exc:
-            self._last_error = "Layout load failed: %s" % exc
-            LOG.error("Tweak View NG: %s", self._last_error)
-            self._layout = self._store.empty()
-        self._maybe_import_legacy()
+        # Layout was preloaded in on_loaded(); only reload if that never ran
+        # (e.g. a host that calls on_ui_setup without on_loaded, or a test).
+        if self._store is None:
+            self._store = LayoutStore(self.options["filename"], bool(self.options.get("backup", True)))
+        if self._layout is None:
+            try:
+                self._layout, load_report = self._store.load_report()
+            except Exception as exc:
+                self._last_error = "Layout load failed: %s" % exc
+                LOG.error("Tweak View NG: %s", self._last_error)
+                self._layout = self._store.empty()
+                load_report = {"ok": False, "fatal": str(exc), "recovered": [], "skipped": []}
+            import_report = self._maybe_import_legacy()
+            self._load_report = {"layout": load_report, "legacy_import": import_report}
         result = self._apply_profile(redraw=False)
+        self._phase = self.PHASE_READY
         LOG.info("Tweak View NG ready: %dx%d, %d properties/shapes applied, %d pending", ui.width(), ui.height(), result["applied"], len(result["missing"]))
 
     def on_ui_update(self, ui):
@@ -541,10 +772,48 @@ class TweakViewNG(plugins.Plugin):
         except Exception:
             LOG.exception("Tweak View NG: unload restore failed")
 
+    def _is_ready(self):
+        return self._phase == self.PHASE_READY and self._adapter is not None
+
+    def _readiness_payload(self):
+        """Small, always-safe status payload (harvest item 4).
+
+        Readable at any phase, even before on_ui_setup() - it never touches the
+        UI adapter unless one exists. Lets the browser show 'waiting for UI'
+        instead of getting an opaque 500.
+        """
+        phase = self._phase
+        messages = {
+            self.PHASE_INIT: "plugin constructed",
+            self.PHASE_LOADED: "plugin loaded",
+            self.PHASE_WAITING_UI: "layout loaded; waiting for UI adapter",
+            self.PHASE_READY: "ready",
+        }
+        payload = {
+            "phase": phase,
+            "ready": self._is_ready(),
+            "message": messages.get(phase, phase),
+            "plugin_version": self.__version__,
+            "target": TARGET,
+            "pwnagotchi_version": getattr(pwnagotchi, "__version__", "unknown"),
+            "layout_loaded": self._layout is not None,
+            "active_profile": (self._layout or {}).get("active_profile", "default"),
+            "last_error": self._last_error,
+        }
+        if self._load_report is not None:
+            payload["load_report"] = self._load_report
+        if self._adapter is not None:
+            try:
+                width, height = self._adapter.dimensions()
+                payload["screen"] = [width, height]
+            except Exception:
+                pass
+        return payload
+
     def _state_payload(self):
         snap = self._adapter.snapshot()
         profile = self._profile()
-        snap.update({"plugin_version": self.__version__, "target": TARGET, "pwnagotchi_version": getattr(pwnagotchi, "__version__", "unknown"), "active_profile": self._layout.get("active_profile", "default"), "profiles": sorted(self._layout.get("profiles", {}).keys()), "configured": profile, "history": {"undo": len(self._history), "redo": len(self._redo)}, "pending_missing": sorted(self._pending_missing), "last_error": self._last_error, "fonts": sorted(self._fonts.keys())})
+        snap.update({"plugin_version": self.__version__, "target": TARGET, "pwnagotchi_version": getattr(pwnagotchi, "__version__", "unknown"), "phase": self._phase, "ready": self._is_ready(), "active_profile": self._layout.get("active_profile", "default"), "profiles": sorted(self._layout.get("profiles", {}).keys()), "configured": profile, "history": {"undo": len(self._history), "redo": len(self._redo)}, "pending_missing": sorted(self._pending_missing), "last_error": self._last_error, "load_report": self._load_report, "fonts": sorted(self._fonts.keys())})
         return snap
 
     def _json_body(self, request):
@@ -554,19 +823,73 @@ class TweakViewNG(plugins.Plugin):
         return data
 
     def _route_api(self, path, request):
+        # Readiness endpoint - safe at any phase, never needs the UI adapter.
+        if path == "api/ready" and request.method == "GET":
+            return jsonify(self._readiness_payload())
+        # Everything below needs the UI adapter. If we're not ready yet, return
+        # a structured 503 instead of letting an AttributeError become a 500.
+        if not self._is_ready():
+            payload = self._readiness_payload()
+            payload["ok"] = False
+            payload["error"] = "not ready: " + payload["message"]
+            return jsonify(payload), 503
         if path == "api/state" and request.method == "GET":
             return jsonify(self._state_payload())
         if path == "api/health" and request.method == "GET":
             width, height = self._adapter.dimensions()
-            return jsonify({"ok": True, "plugin": self.__version__, "target": TARGET, "pwnagotchi": getattr(pwnagotchi, "__version__", "unknown"), "screen": [width, height], "pending": sorted(self._pending_missing)})
+            return jsonify({"ok": True, "plugin": self.__version__, "target": TARGET, "pwnagotchi": getattr(pwnagotchi, "__version__", "unknown"), "phase": self._phase, "ready": True, "screen": [width, height], "pending": sorted(self._pending_missing)})
+        if path == "api/export" and request.method == "GET":
+            return jsonify(self._layout)
+        # All remaining routes are state-mutating POSTs. Run them inside a
+        # transaction (harvest item 5): if the handler or its atomic save fails,
+        # roll runtime AND in-memory layout back to the pre-edit snapshot so the
+        # two never diverge. The handlers still call self._save() as their last
+        # step; a failure there is caught here and rolled back.
+        if request.method == "POST":
+            return self._mutating_route(path, request)
+        abort(404)
+
+    def _mutating_route(self, path, request):
+        prior_layout = copy.deepcopy(self._layout)
+        names_before = set(self._adapter.element_names()) if self._adapter else set()
+        history_before = len(self._history)
+        try:
+            return self._dispatch_mutation(path, request)
+        except _HttpResult as hr:
+            # A clean, intended HTTP response (e.g. 400/404/409) - not a failure.
+            return hr.value
+        except Exception as exc:
+            LOG.warning("Tweak View NG: mutation %s rolled back: %s", path, exc)
+            self._last_error = "Edit rolled back: %s" % exc
+            # Roll back in-memory layout.
+            self._layout = prior_layout
+            # Drop any history entry the handler pushed before it failed.
+            if len(self._history) > history_before:
+                del self._history[history_before:]
+            # Roll back runtime: remove elements the failed handler added, then
+            # restore touched originals and re-apply the restored profile.
+            if self._adapter is not None:
+                try:
+                    for name in set(self._adapter.element_names()) - names_before:
+                        self._adapter.remove(name)
+                except Exception:
+                    LOG.debug("Tweak View NG: rollback add-cleanup failed", exc_info=True)
+                self._restore_runtime_to_originals()
+                try:
+                    self._apply_profile(redraw=True)
+                except Exception:
+                    LOG.exception("Tweak View NG: rollback re-apply failed")
+            return jsonify({"ok": False, "error": "edit rolled back: %s" % exc, "rolled_back": True}), 500
+
+    def _dispatch_mutation(self, path, request):
         if path == "api/update" and request.method == "POST":
             data = self._json_body(request)
             element = str(data.get("element", "")).strip()
             props = data.get("properties", {})
             if not element:
-                return jsonify({"ok": False, "error": "element required"}), 400
+                raise _HttpResult((jsonify({"ok": False, "error": "element required"}), 400))
             if not self._adapter.has(element):
-                return jsonify({"ok": False, "error": "unknown element"}), 404
+                raise _HttpResult((jsonify({"ok": False, "error": "unknown element"}), 404))
             widget = self._adapter.get_widget(element)
             validated = {}
             for prop, value in props.items():
@@ -603,9 +926,9 @@ class TweakViewNG(plugins.Plugin):
             data = self._json_body(request)
             name = str(data.get("name", "")).strip()
             if not name or name.startswith("__"):
-                return jsonify({"ok": False, "error": "valid name required"}), 400
+                raise _HttpResult((jsonify({"ok": False, "error": "valid name required"}), 400))
             if self._adapter.has(name) and name not in self._profile().get("shapes", {}):
-                return jsonify({"ok": False, "error": "name collides with existing UI element"}), 409
+                raise _HttpResult((jsonify({"ok": False, "error": "name collides with existing UI element"}), 409))
             spec = {"type": str(data.get("type", "line")), "properties": dict(data.get("properties") or {})}
             self._push_history()
             self._adapter.add_shape(name, spec)
@@ -618,7 +941,7 @@ class TweakViewNG(plugins.Plugin):
             name = str(data.get("name", "")).strip()
             shapes = self._profile().setdefault("shapes", {})
             if name not in shapes:
-                return jsonify({"ok": False, "error": "custom shape not found"}), 404
+                raise _HttpResult((jsonify({"ok": False, "error": "custom shape not found"}), 404))
             self._push_history()
             self._adapter.remove(name)
             shapes.pop(name, None)
@@ -640,7 +963,7 @@ class TweakViewNG(plugins.Plugin):
             return jsonify({"ok": True})
         if path == "api/undo" and request.method == "POST":
             if not self._history:
-                return jsonify({"ok": False, "error": "nothing to undo"}), 409
+                raise _HttpResult((jsonify({"ok": False, "error": "nothing to undo"}), 409))
             current = self._snapshot_config()
             previous = self._history.pop()
             self._redo.append(current)
@@ -651,7 +974,7 @@ class TweakViewNG(plugins.Plugin):
             return jsonify({"ok": True, "result": result})
         if path == "api/redo" and request.method == "POST":
             if not self._redo:
-                return jsonify({"ok": False, "error": "nothing to redo"}), 409
+                raise _HttpResult((jsonify({"ok": False, "error": "nothing to redo"}), 409))
             current = self._snapshot_config()
             nxt = self._redo.pop()
             self._history.append(current)
@@ -660,12 +983,10 @@ class TweakViewNG(plugins.Plugin):
             result = self._apply_profile(redraw=True)
             self._save()
             return jsonify({"ok": True, "result": result})
-        if path == "api/export" and request.method == "GET":
-            return jsonify(self._layout)
         if path == "api/import" and request.method == "POST":
             data = self._json_body(request)
             if "schema" in data and data.get("schema") != SCHEMA_VERSION:
-                return jsonify({"ok": False, "error": "unsupported layout schema"}), 400
+                raise _HttpResult((jsonify({"ok": False, "error": "unsupported layout schema"}), 400))
             self._push_history()
             self._restore_runtime_to_originals()
             if data.get("schema") == SCHEMA_VERSION and "profiles" in data:
@@ -682,7 +1003,7 @@ class TweakViewNG(plugins.Plugin):
             data = self._json_body(request)
             name = str(data.get("name", "")).strip()
             if not name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in name):
-                return jsonify({"ok": False, "error": "invalid profile name"}), 400
+                raise _HttpResult((jsonify({"ok": False, "error": "invalid profile name"}), 400))
             self._push_history()
             self._restore_runtime_to_originals()
             self._layout.setdefault("profiles", {}).setdefault(name, {"edits": {}, "shapes": {}})
@@ -690,7 +1011,86 @@ class TweakViewNG(plugins.Plugin):
             result = self._apply_profile(redraw=True)
             self._save()
             return jsonify({"ok": True, "result": result})
-        abort(404)
+        if path == "api/recovery/update" and request.method == "POST":
+            return self._recovery_update(request)
+        # Unknown mutating route - a clean 404, not a rolled-back edit.
+        raise _HttpResult((jsonify({"ok": False, "error": "not found"}), 404))
+
+    # ------------------------------------------------------------------ #
+    # Minimal server-rendered recovery editor (harvest item 8)
+    # ------------------------------------------------------------------ #
+    def _recovery_rows(self):
+        """Build a plain data structure for the recovery page.
+
+        No JavaScript, no live preview - just the current editable string/int
+        properties of each element, with every value HTML-escaped at render
+        time by Jinja autoescaping.
+        """
+        snap = self._adapter.snapshot()
+        configured = self._profile().get("edits", {})
+        rows = []
+        for name in sorted(snap["elements"].keys()):
+            el = snap["elements"][name]
+            fields = []
+            for prop in el["editable"]:
+                # Recovery editor keeps it simple: only scalar props it can
+                # round-trip through a text input. xy is shown as "a,b[,c,d]".
+                if prop in FONT_PROPS or prop in BOOL_PROPS:
+                    continue
+                value = el["properties"].get(prop)
+                if isinstance(value, (list, tuple)):
+                    value = ",".join(str(v) for v in value)
+                fields.append({"prop": prop, "value": "" if value is None else str(value),
+                               "edited": prop in configured.get(name, {})})
+            rows.append({"name": name, "type": el["type"], "fields": fields})
+        return rows
+
+    def _recovery_update(self, request):
+        """Apply a single element/property edit submitted by the recovery form.
+
+        Form fields: ``element``, ``property``, ``value``. Runs through the same
+        validated, transactional path as the JSON API (this is invoked from
+        within _mutating_route, so it inherits rollback-on-failure).
+        """
+        form = getattr(request, "form", None)
+        getter = form.get if form is not None else (lambda k, d=None: d)
+        element = str(getter("element", "") or "").strip()
+        prop = str(getter("property", "") or "").strip()
+        value = getter("value", "")
+        if not element or not prop:
+            raise _HttpResult((self._recovery_html(message="element and property are required", ok=False), 400))
+        if prop not in SAFE_PROPS:
+            raise _HttpResult((self._recovery_html(message="property not editable: %s" % prop, ok=False), 400))
+        if not self._adapter.has(element):
+            raise _HttpResult((self._recovery_html(message="unknown element: %s" % element, ok=False), 404))
+        widget = self._adapter.get_widget(element)
+        if not hasattr(widget, prop):
+            raise _HttpResult((self._recovery_html(message="%s has no property %s" % (element, prop), ok=False), 400))
+        # Validate before mutating (raises ValueError -> rolled back as 500).
+        self._adapter.normalize_property(widget, prop, value)
+        self._push_history()
+        profile = self._profile()
+        if element in profile.setdefault("shapes", {}):
+            profile["shapes"][element].setdefault("properties", {})[prop] = value
+            self._adapter.add_shape(element, profile["shapes"][element])
+        else:
+            profile.setdefault("edits", {}).setdefault(element, {})[prop] = value
+            self._adapter.apply_properties(element, {prop: value}, self._originals)
+        self._save()
+        self._adapter.redraw()
+        return self._recovery_html(message="updated %s.%s" % (element, prop), ok=True)
+
+    def _recovery_html(self, message=None, ok=True):
+        if not self._is_ready():
+            payload = self._readiness_payload()
+            return render_template_string(RECOVERY_NOT_READY, version=self.__version__,
+                                          phase=payload["phase"], message=payload["message"])
+        width, height = self._adapter.dimensions()
+        return render_template_string(
+            RECOVERY_UI, version=self.__version__, rows=self._recovery_rows(),
+            width=width, height=height, active_profile=self._layout.get("active_profile", "default"),
+            message=message, ok=ok, last_error=self._last_error,
+        )
 
     def on_webhook(self, path, request):
         try:
@@ -699,6 +1099,11 @@ class TweakViewNG(plugins.Plugin):
                 return self._route_api(path, request)
             if request.method == "GET" and path in ("", "/"):
                 return render_template_string(WEB_UI, version=self.__version__)
+            if path == "recovery" and request.method in ("GET", "POST"):
+                if request.method == "POST":
+                    # Route through the transactional mutation path.
+                    return self._route_api("api/recovery/update", request)
+                return self._recovery_html()
             abort(404)
         except Exception as exc:
             self._last_error = str(exc)
@@ -711,4 +1116,75 @@ WEB_UI = r"""
 <style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}</style></head>
 <body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
 <script>const CSRF=document.querySelector('meta[name=csrf_token]').content;let S=null,selected=null,drag=null;const api=async(path,method='GET',body=null)=>{let o={method,headers:{'X-CSRFToken':CSRF}};if(body!==null){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}let r=await fetch('/plugins/tweak_view_ng/'+path,o);let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j};function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}async function refresh(){try{S=await api('api/state');document.getElementById('screen').textContent=`${S.screen.width}×${S.screen.height} • Pwn ${S.pwnagotchi_version}`;renderList();renderEditor();renderProfiles();scale();msg(`undo ${S.history.undo} • redo ${S.history.redo}${S.pending_missing.length?' • pending '+S.pending_missing.join(', '):''}`)}catch(e){msg(e.message,true)}}function renderList(){if(!S)return;let q=document.getElementById('search').value.toLowerCase(),ul=document.getElementById('elements');ul.innerHTML='';Object.entries(S.elements).filter(([n])=>n.toLowerCase().includes(q)).forEach(([n,e])=>{let li=document.createElement('li');li.className='el'+(n===selected?' sel':'');li.innerHTML=`<b>${esc(n)}</b><span class=type>${esc(e.type)}</span>`;li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};ul.appendChild(li)})}function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function renderEditor(){let ed=document.getElementById('editor'),t=document.getElementById('title');ed.innerHTML='';if(!S||!selected||!S.elements[selected]){t.textContent='Select an element';return}let e=S.elements[selected];t.textContent=selected+' · '+e.type;e.editable.forEach(k=>{let v=e.properties[k],row=document.createElement('div');row.className='row';let label=document.createElement('label');label.textContent=k;let input;if(['font','text_font','label_font','alt_font'].includes(k)){input=document.createElement('select');S.fonts.forEach(f=>{let o=document.createElement('option');o.value=f;o.textContent=f;if(f===v)o.selected=true;input.appendChild(o)})}else if(k==='wrap'){input=document.createElement('input');input.type='checkbox';input.checked=!!v}else{input=document.createElement('input');input.value=Array.isArray(v)?v.join(','):v??'';if(k==='xy')input.dataset.xy='1'}input.id='p_'+k;row.append(label,input);ed.appendChild(row)})}function readProps(){let e=S.elements[selected],p={};e.editable.forEach(k=>{let i=document.getElementById('p_'+k);if(!i)return;p[k]=k==='wrap'?i.checked:i.value});return p}async function apply(){if(!selected)return;try{await api('api/update','POST',{element:selected,properties:readProps()});await refresh();reloadPreview();msg('applied ✓')}catch(e){msg(e.message,true)}}async function revertEl(){if(!selected)return;try{await api('api/revert','POST',{element:selected});await refresh();reloadPreview();msg('reverted ✓')}catch(e){msg(e.message,true)}}async function resetAll(){if(!confirm('Reset the active profile?'))return;try{await api('api/reset','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}async function undo(){try{await api('api/undo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}function renderProfiles(){let s=document.getElementById('profile');s.innerHTML='';S.profiles.forEach(n=>{let o=document.createElement('option');o.value=n;o.textContent=n;o.selected=n===S.active_profile;s.appendChild(o)});s.onchange=()=>api('api/profile','POST',{name:s.value}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}function newProfile(){let n=prompt('New profile name');if(!n)return;api('api/profile','POST',{name:n}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}async function exportCfg(){let d=await api('api/export');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));a.download='tweak_view_ng.json';a.click();URL.revokeObjectURL(a.href)}function importCfg(inp){let f=inp.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);api('api/import','POST',d).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}catch(e){msg('invalid JSON',true)}};r.readAsText(f)}function reloadPreview(){let im=document.getElementById('preview');im.src='/ui?t='+Date.now()}function scale(){if(!S)return;let im=document.getElementById('preview'),frame=document.getElementById('frame'),maxW=Math.max(250,document.querySelector('.stage').clientWidth-40),maxH=Math.max(150,document.querySelector('.stage').clientHeight-40),sc=Math.min(maxW/S.screen.width,maxH/S.screen.height,4);if(window.innerWidth<850)sc=Math.min((window.innerWidth-38)/S.screen.width,3);sc=Math.max(.5,sc);frame.style.width=(S.screen.width*sc)+'px';frame.style.height=(S.screen.height*sc)+'px';im.style.width='100%';im.style.height='100%';drawBoxes()}function drawBoxes(){let ov=document.getElementById('overlay');ov.innerHTML='';if(!S)return;Object.entries(S.elements).forEach(([n,e])=>{let xy=e.properties.xy;if(!xy)return;if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;let b=document.createElement('div');b.className='box'+(n===selected?' sel':'');b.style.left=(x/S.screen.width*100)+'%';b.style.top=(y/S.screen.height*100)+'%';b.style.width=(w/S.screen.width*100)+'%';b.style.height=(h/S.screen.height*100)+'%';b.title=n;b.onpointerdown=ev=>startDrag(ev,n,xy);b.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};ov.appendChild(b)})}function startDrag(ev,n,xy){selected=n;renderList();renderEditor();let frame=document.getElementById('frame').getBoundingClientRect();drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};ev.target.setPointerCapture(ev.pointerId);ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag}function moveDrag(ev){if(!drag)return;let dx=Math.round((ev.clientX-drag.sx)*S.screen.width/drag.fw),dy=Math.round((ev.clientY-drag.sy)*S.screen.height/drag.fh),a=[...drag.xy];a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}let i=document.getElementById('p_xy');if(i)i.value=a.join(',')}function endDrag(ev){if(!drag)return;drag=null;apply()}window.addEventListener('resize',scale);document.getElementById('preview').onload=()=>{scale();drawBoxes()};refresh();setInterval(()=>reloadPreview(),7000);</script></body></html>
+"""
+
+
+# Minimal, dependency-light, JavaScript-free recovery editor (harvest item 8).
+# Jinja autoescaping renders every value as data, so hostile element names,
+# types or values cannot inject markup. Plain <form> POSTs carry the CSRF token.
+RECOVERY_UI = r"""
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tweak View NG - Recovery</title>
+<style>
+body{margin:0;background:#0b0e10;color:#d7e0e5;font:14px system-ui,sans-serif;padding:14px}
+h1{font-size:18px;color:#5bd1ff;letter-spacing:.06em;margin:0 0 4px}
+.sub{color:#83919a;font-size:12px;margin:0 0 14px}
+.msg{padding:8px 10px;border-radius:5px;margin:0 0 14px;border:1px solid}
+.msg.ok{border-color:#2e6b39;color:#79e28b;background:#0f1a12}
+.msg.err{border-color:#6d3037;color:#ff6b78;background:#1a0f11}
+table{border-collapse:collapse;width:100%;max-width:760px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #263039;vertical-align:top}
+th{color:#83919a;font-weight:600;font-size:12px}
+.el{color:#d7e0e5;font-weight:600}
+.ty{color:#83919a;font-size:11px}
+.edited{color:#5bd1ff}
+form.inline{display:flex;gap:6px;align-items:center;margin:3px 0}
+input[type=text]{background:#0d1114;color:#d7e0e5;border:1px solid #34414b;border-radius:4px;padding:5px;width:150px}
+button{background:#0d1114;color:#d7e0e5;border:1px solid #34414b;border-radius:4px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:#5bd1ff}
+.nav a{color:#5bd1ff;text-decoration:none;margin-right:12px}
+code{color:#9fb0ba}
+</style></head>
+<body>
+<h1>TWEAK VIEW NG - RECOVERY</h1>
+<p class="sub">{{ version }} &middot; {{ width }}&times;{{ height }} &middot; profile <code>{{ active_profile }}</code> &middot; simple server-rendered fallback (no JavaScript)</p>
+<p class="nav"><a href="/plugins/tweak_view_ng/">&larr; full editor</a></p>
+{% if message %}<div class="msg {{ 'ok' if ok else 'err' }}">{{ message }}</div>{% endif %}
+{% if last_error %}<div class="msg err">last error: {{ last_error }}</div>{% endif %}
+<table>
+<tr><th>element</th><th>property</th><th>value</th><th></th></tr>
+{% for row in rows %}
+  {% for f in row.fields %}
+  <tr>
+    <td>{% if loop.first %}<span class="el">{{ row.name }}</span><br><span class="ty">{{ row.type }}</span>{% endif %}</td>
+    <td class="{{ 'edited' if f.edited else '' }}">{{ f.prop }}</td>
+    <td colspan="2">
+      <form class="inline" method="post" action="/plugins/tweak_view_ng/recovery">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="element" value="{{ row.name }}">
+        <input type="hidden" name="property" value="{{ f.prop }}">
+        <input type="text" name="value" value="{{ f.value }}">
+        <button type="submit">set</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+{% endfor %}
+</table>
+</body></html>
+"""
+
+
+RECOVERY_NOT_READY = r"""
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tweak View NG - Recovery</title>
+<style>body{margin:0;background:#0b0e10;color:#d7e0e5;font:14px system-ui,sans-serif;padding:20px}
+h1{font-size:18px;color:#5bd1ff}.p{color:#83919a}</style></head>
+<body><h1>TWEAK VIEW NG - RECOVERY</h1>
+<p class="p">{{ version }}</p>
+<p>Not ready yet: <b>{{ message }}</b> (phase: <code>{{ phase }}</code>).</p>
+<p class="p">The UI adapter is not available. Reload this page once the Pwnagotchi UI has finished starting.</p>
+</body></html>
 """

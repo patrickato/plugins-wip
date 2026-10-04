@@ -1,0 +1,18 @@
+{
+  "VSS.channel.label": "CH: ",
+  "VSS.channel.label_font": "Bold",
+  "VSS.channel.label_spacing": 5,
+  "VSS.channel.text_font": "Small",
+  "VSS.aps.label": "APS: ",
+  "VSS.aps.label_font": "Bold",
+  "VSS.aps.text_font": "Small",
+  "VSS.uptime.label": "Uptime: ",
+  "VSS.uptime.label_font": "Bold",
+  "VSS.face.font": "Huge",
+  "VSS.face.xy": "0,40",
+  "VSS.name.font": "Bold",
+  "VSS.status.font": "BoldBig",
+  "VSS.status.max_length": 30,
+  "VSS.status.wrap": true,
+  "VSS.mode.font": "Bold"
+}

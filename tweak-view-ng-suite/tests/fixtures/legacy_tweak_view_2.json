@@ -1,0 +1,18 @@
+{
+  "VSS.face.font": "Huge",
+  "VSS.face.xy": "5,35",
+  "VSS.name.font": "BoldSmall",
+  "VSS.name.xy": "5,10",
+  "VSS.status.font": "Medium",
+  "VSS.status.max_length": 24,
+  "VSS.status.xy": "10,90",
+  "VSS.channel.label": "C:",
+  "VSS.channel.label_spacing": 2,
+  "VSS.aps.label": "A:",
+  "VSS.uptime.label": "U:",
+  "__custom_shapes__": {
+    "divider": {"type": "CustomLine", "props": {"xy": "0,20,480,20", "color": 0}},
+    "badge": {"type": "CustomRect", "props": {"xy": "400,0,470,18", "color": 0}},
+    "dot": {"type": "CustomEllipse", "props": {"xy": "440,2,452,14", "color": 255}}
+  }
+}

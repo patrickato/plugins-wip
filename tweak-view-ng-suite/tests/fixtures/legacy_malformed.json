@@ -1,0 +1,14 @@
+{
+  "VSS.face.font": "Huge",
+  "VSS.bad_key_without_prop": "oops",
+  "VSS..emptyelement": "1,2",
+  "VSS.status.not_a_safe_prop": "nope",
+  "VSS.name.xy": "10,10",
+  "not_a_vss_key": "ignored",
+  "__custom_shapes__": {
+    "": {"type": "CustomLine", "props": {"xy": "0,0,10,10"}},
+    "good": {"type": "CustomRect", "props": {"xy": "1,1,9,9", "color": 0}},
+    "badprops": {"type": "CustomLine", "props": "this-should-be-an-object"},
+    "notdict": "entirely wrong"
+  }
+}
