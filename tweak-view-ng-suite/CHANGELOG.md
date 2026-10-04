@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.0-alpha3
+
+First on-hardware validation pass (Pi 4 + 480x320 ILI9486, Jayofelony
+**2.9.5.9** — one patch past the 2.9.5.8 target, loads clean). Verified live:
+plugin-loader startup, the web UI + `api/ready`/`api/health`/`api/state`
+endpoints, edit -> atomic persist -> **reboot -> restore** (12 properties
+re-applied on boot, confirmed on the physical TFT), undo/redo, and the
+JavaScript-free recovery editor (101 editable rows).
+
+### Fixed
+
+- **Editor web UI: graceful handling of non-JSON responses.** The `api()`
+  fetch helper now checks the response content-type before parsing, so a stale
+  CSRF token (e.g. a page left open across a reboot — flask-wtf answers those
+  POSTs with an HTML 400) shows "Session expired — reload the page" instead of
+  the cryptic `Unexpected token '<' … is not valid JSON`. Applies to both the
+  main editor and the recovery form; 401/403 and other non-JSON responses get a
+  clear message too. Found during on-hardware validation.
+
+### Notes
+
+- Still alpha pending the remaining checklist items (legacy import on hardware,
+  profile reset, long-run/third-party-widget churn). The critical gates
+  (load, persist/restore across reboot, live display) have passed on-device.
+
 ## 0.1.0-alpha2
 
 Suite-harvest hardening pass. All eight harvest items from
