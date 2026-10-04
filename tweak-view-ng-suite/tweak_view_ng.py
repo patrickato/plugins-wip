@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha9"
+    __version__ = "0.2.0-beta1"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 

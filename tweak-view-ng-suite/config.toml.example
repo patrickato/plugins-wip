@@ -1,8 +1,16 @@
+# Tweak View NG - paste this into /etc/pwnagotchi/config.toml
+#
+# Only `enabled = true` is required. Every other line below is OPTIONAL and shows
+# the built-in default, so you can delete any you don't want to change. There is
+# no ">>> USER INPUT REQUIRED <<<" here: the plugin needs no mandatory settings.
+
 [main.plugins.tweak_view_ng]
 enabled = true
-filename = "/etc/pwnagotchi/tweak_view_ng.json"
-legacy_filename = "/etc/pwnagotchi/tweak_view.json"
-auto_import_legacy = true
-backup = true
-history_limit = 50
-strict_version = false
+
+# --- optional (defaults shown) ---
+filename = "/etc/pwnagotchi/tweak_view_ng.json"   # where your layout is saved
+legacy_filename = "/etc/pwnagotchi/tweak_view.json" # old Tweak View file to import from
+auto_import_legacy = true                          # import an old layout once, if present
+backup = true                                      # write a .bak before each save
+history_limit = 50                                 # number of undo steps kept
+strict_version = false                             # true = refuse anything but 2.9.5.8

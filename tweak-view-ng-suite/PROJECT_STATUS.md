@@ -5,8 +5,8 @@
 This is a **separate project** from the existing `tweak-view-suite` in this repository. Do not merge, overwrite, delete, join, or treat that older suite as the working tree for this project.
 
 Project directory: `tweak-view-ng-suite/`
-Current release: `0.1.0-alpha2`
-Primary software target: **Jayofelony Pwnagotchi 2.9.5.8 64-bit**
+Current release: `0.2.0-beta1`
+Primary software target: **Jayofelony Pwnagotchi 2.9.5.8 64-bit** (also runs on 2.9.5.9)
 
 ### Permanent separation rule
 
@@ -92,14 +92,16 @@ covered by independent tests (see `TEST_REPORT.md`):
 8. ✅ minimal server-rendered recovery editor
    (`/plugins/tweak_view_ng/recovery`).
 
-The harvest gate is therefore **cleared in software**. The remaining gate to
-`0.2.0-beta1` is real-hardware validation (below), which has **not** been done.
+The harvest gate is therefore **cleared in software**, and the real-hardware
+validation gate (below) has now **also been cleared** across the alpha3→alpha9
+on-device passes — which is why this release is `0.2.0-beta1`.
 
 ## Test state
 
-Desktop/simulated result: **PASS**.
+Desktop/simulated result: **PASS**. Hardware result: **PASS** (Pi 4 + 480×320
+TFT, Jayofelony 2.9.5.9).
 
-- **Unit (stubbed framework): 59/59 pytest tests** (`tests/`, was 32).
+- **Unit (stubbed framework): 77/77 pytest tests** (`tests/`, was 32 at alpha1).
 - **Integration (real Jayofelony 2.9.5.8): 16 passed, 1 skipped** (`tests/integration/`).
   The skip is a loader helper that exists only after the 2.9.5.8 tag.
 
@@ -129,38 +131,39 @@ Simulated screen matrix:
 - 320x480
 - 480x800
 
-## Next release gate
+## Hardware validation — DONE
 
-The project remains **alpha** until the Suite-harvest hardening items and real-hardware validation are complete.
-
-First physical target:
+Validated live on the first physical target across the alpha3→alpha9 passes:
 
 - Raspberry Pi 4
-- Jayofelony Pwnagotchi 2.9.5.8 64-bit
-- 3.5-inch 480x320 ILI9486 display
-- XPT2046/ADS7846 touch hardware
+- Jayofelony Pwnagotchi **2.9.5.9** (one patch past the 2.9.5.8 API target; loads clean)
+- 3.5-inch 480×320 ILI9486 display
 
-Physical checks still required:
+Confirmed on-device:
 
-1. real plugin-loader import/startup
-2. real Flask/CSRF webhook behavior
-3. actual framebuffer/display redraw after forced updates
-4. edit -> persist -> restart -> restore cycle
-5. Undo/Redo and reset on hardware
-6. original Tweak View legacy import on hardware
-7. interaction with live third-party widgets appearing/disappearing
-8. long-running operation while the Pwnagotchi UI updates
-9. Pi Zero 2W / Pi 3 / Pi 5 performance and compatibility when hardware becomes available
-10. multiple actual display drivers/rotations
+1. ✅ real plugin-loader import/startup (clean load, `ready` with properties applied)
+2. ✅ real Flask/CSRF webhook behavior (editor + `api/ready`/`api/health`/`api/state`; stale-CSRF handled gracefully)
+3. ✅ actual display redraw after forced updates (changes visible on the physical TFT)
+4. ✅ edit → persist → **reboot** → restore cycle (properties re-applied on boot, confirmed on the TFT)
+5. ✅ Undo/Redo and reset on hardware
+6. ✅ the full editor UX on-device: drag, arrow/1px-pad nudge, align pad, Match X/Y, Stack, profiles, help mode
+7. ✅ the JavaScript-free recovery editor
+
+Remaining (nice-to-have, not gating beta):
+
+- Pi Zero 2W / Pi 3 / Pi 5 performance when that hardware is on hand
+- additional display drivers/rotations
+- long-duration soak alongside a large third-party plugin set
 
 ## Release path
 
-`0.1.0-alpha1` -> Suite-harvest hardening (**done → `0.1.0-alpha2`**) ->
-Pi 4/480x320 validation -> fixes -> `0.2.0-beta1` -> broader Pi/display
-validation -> stable `1.0.0`.
+`0.1.0-alpha1` → Suite-harvest hardening (`0.1.0-alpha2`) → Pi 4/480×320
+on-hardware validation + iterative editor fixes (`alpha3`→`alpha9`) →
+**`0.2.0-beta1` (here)** → broader Pi/display validation → stable `1.0.0`.
 
-We are at `0.1.0-alpha2`: the harvest hardening is complete in software. The
-next step is the real-hardware validation pass listed above; `0.2.0-beta1` is
-not tagged until that passes.
+We are at **`0.2.0-beta1`**: harvest hardening complete in software, editor
+feature set complete and validated on hardware. The path to `1.0.0` is broader
+multi-device/display coverage and a soak test, not new features.
 
-Do not mark stable merely because sandbox tests pass. Maintain explicit `PASS`, `SIMULATED PASS`, and `NOT TESTED` labels in future reports.
+Do not mark `1.0.0` stable merely because sandbox tests pass. Maintain explicit
+`PASS`, `SIMULATED PASS`, and `NOT TESTED` labels in future reports.

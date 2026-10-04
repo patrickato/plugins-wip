@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.0-beta1
+
+First beta. The editor feature set is complete and has been validated live on
+hardware (Pi 4 + 480×320 TFT, Jayofelony 2.9.5.9) across the alpha3→alpha9
+on-device passes. This release is about packaging it for real users — no new
+editor behavior, just graduation polish.
+
+### Added
+
+- **Plug-and-play one-line installer.** `install.sh` is now a `curl … | sudo sh`
+  installer: it auto-detects the plugin directory from `config.toml`'s
+  `custom_plugins` (falling back to the Jayofelony default), backs up any existing
+  copy, syntax-checks the download before installing, adds a
+  `[main.plugins.tweak_view_ng]` section only if one isn't already present (never
+  clobbering user settings), restarts Pwnagotchi, and prints the editor URL. It
+  works both piped from GitHub and from a local checkout, and is idempotent.
+- **Complete, user-facing README** covering what it does, requirements, one-line
+  and manual install, a walkthrough of every editor feature, the configuration
+  table, storage/safety, legacy import, uninstall, and troubleshooting.
+
+### Changed
+
+- Version bumped `0.1.0-alpha9` → `0.2.0-beta1`.
+- `uninstall.sh` now also auto-detects the plugin directory; `config.toml.example`
+  documents that only `enabled` is required and the rest are optional defaults.
+
+### Notes
+
+- The consolidated history (alpha5→alpha9) lands on `main` with this release; the
+  per-feature alpha branches are retired.
+- The durable core channel-hop fix (`core-patches/`) is tracked separately — it
+  patches Pwnagotchi core, not this plugin.
+
 ## 0.1.0-alpha9
 
 Fine-adjustment, contextual help and a tasteful visual refresh — from the
