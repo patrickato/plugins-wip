@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.1.0-alpha2
+
+Suite-harvest hardening pass. All eight harvest items from
+`SEPARATION_AND_SUITE_HARVEST.md` are implemented and covered by tests.
+Still alpha: real-hardware validation on the Pi has not yet been done, which
+remains the gate to `0.2.0-beta1`.
+
+### Added
+
+- **Real Jayofelony integration test layer** (item 1): `tests/integration/`
+  runs NG against the genuine Jayofelony 2.9.5.8 `View`/`State`/components/fonts
+  and the real plugin loader (pinned to the `v2.9.5.8` tag), via the headless
+  `DummyDisplay`. Skips cleanly when no real checkout is available.
+- **Per-entry corruption recovery + import report** (item 3): a malformed
+  profile/element/property/shape is dropped with an explicit reason instead of
+  invalidating a healthy layout; a structured load/import report is exposed in
+  the state and readiness payloads. New `sanitize_layout()`,
+  `LayoutStore.load_report()` and `import_legacy_report()`.
+- **Explicit startup/readiness state** (item 4): an `init -> loaded ->
+  waiting_ui -> ready` phase machine; a new `api/ready` endpoint readable at any
+  phase; mutating APIs return a structured `503` (not a `500`) before the UI
+  adapter exists.
+- **HTML/DOM injection regression tests** (item 6): hostile element names,
+  labels and values stay data (JSON API) and are entity-escaped by the recovery
+  page, verified against real Jinja autoescaping.
+- **Historical configuration fixtures** (item 7): original Tweak View, Tweak
+  View 2, malformed, mixed valid/invalid, and current/corrupt NG-schema fixtures
+  under `tests/fixtures/`, with conversion + recovery regression tests.
+- **Minimal server-rendered recovery editor** (item 8): a dependency-light,
+  JavaScript-free fallback editor at `/plugins/tweak_view_ng/recovery`.
+
+### Changed
+
+- **Earlier layout preload** (item 2): the layout is loaded and validated in
+  `on_loaded()` (before any UI object), with UI-dependent application still in
+  `on_ui_setup()`. `on_loaded()` never raises on a bad file.
+- **Transactional edit/save rollback** (item 5): every mutating route runs
+  through a transaction that snapshots layout + runtime and rolls both back if
+  the handler or its atomic save fails, so runtime and persisted state never
+  diverge. Deliberate `4xx` responses are not treated as failures.
+
+### Tests
+
+- 59 offline unit tests (was 32) + 16 real-framework integration tests.
+- `pytest.ini` keeps the two suites in separate invocations (their conftests
+  are mutually exclusive).
+
 ## 0.1.0-alpha1
 
 First Tweak View NG implementation.

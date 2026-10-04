@@ -5,7 +5,7 @@
 This is a **separate project** from the existing `tweak-view-suite` in this repository. Do not merge, overwrite, delete, join, or treat that older suite as the working tree for this project.
 
 Project directory: `tweak-view-ng-suite/`
-Current release: `0.1.0-alpha1`
+Current release: `0.1.0-alpha2`
 Primary software target: **Jayofelony Pwnagotchi 2.9.5.8 64-bit**
 
 ### Permanent separation rule
@@ -59,26 +59,49 @@ Implemented in 0.1.0-alpha1:
 - unload restoration and NG custom-shape cleanup
 - offline editor with no CDN dependency
 
+Added in 0.1.0-alpha2 (harvest hardening):
+
+- layout preload + validation in `on_loaded()` (before the UI exists)
+- per-entry corruption recovery with a structured load/import report
+- explicit readiness phases, an `api/ready` endpoint, and a not-ready `503`
+- transactional edits that roll back runtime + persisted state on save failure
+- a minimal, JavaScript-free recovery editor at `/recovery`
+- a real-Jayofelony integration test layer
+
 ## Suite-harvest gate before hardware validation
 
-Useful lessons from the separate `tweak-view-suite/` have been documented for independent NG implementation. This does **not** authorize merging the projects.
+Useful lessons from the separate `tweak-view-suite/` were documented for
+independent NG implementation. This did **not** authorize merging the projects,
+and nothing under `tweak-view-suite/` was modified.
 
-Planned NG-native additions:
+All eight NG-native additions are now implemented in `tweak-view-ng-suite/` and
+covered by independent tests (see `TEST_REPORT.md`):
 
-1. real Jayofelony framework/plugin-loader integration tests;
-2. earlier layout/config preload and validation;
-3. per-entry corruption recovery and explicit import reports;
-4. deliberate startup/not-ready API and editor state;
-5. stronger transactional edit/save rollback behavior;
-6. HTML/DOM injection regression tests;
-7. historical Tweak View/Tweak View 2 configuration fixtures;
-8. optional minimal server-rendered recovery editor.
+1. ✅ real Jayofelony framework/plugin-loader integration tests
+   (`tests/integration/`, pinned to the `v2.9.5.8` tag);
+2. ✅ earlier layout/config preload and validation (now in `on_loaded()`);
+3. ✅ per-entry corruption recovery and explicit import reports
+   (`sanitize_layout()`, `LayoutStore.load_report()`, `import_legacy_report()`);
+4. ✅ deliberate startup/not-ready API and editor state (phase machine +
+   `api/ready` + structured `503`);
+5. ✅ stronger transactional edit/save rollback behavior
+   (`_mutating_route()` rolls back runtime **and** persisted state on failure);
+6. ✅ HTML/DOM injection regression tests (unit + real-Jinja);
+7. ✅ historical Tweak View/Tweak View 2 configuration fixtures
+   (`tests/fixtures/`);
+8. ✅ minimal server-rendered recovery editor
+   (`/plugins/tweak_view_ng/recovery`).
 
-These should be implemented only in `tweak-view-ng-suite/` and tested independently.
+The harvest gate is therefore **cleared in software**. The remaining gate to
+`0.2.0-beta1` is real-hardware validation (below), which has **not** been done.
 
 ## Test state
 
-Desktop/simulated alpha result: **PASS — 32/32 pytest tests**.
+Desktop/simulated result: **PASS**.
+
+- **Unit (stubbed framework): 59/59 pytest tests** (`tests/`, was 32).
+- **Integration (real Jayofelony 2.9.5.8): 16 passed, 1 skipped** (`tests/integration/`).
+  The skip is a loader helper that exists only after the 2.9.5.8 tag.
 
 Also passing:
 
@@ -88,6 +111,13 @@ Also passing:
 - duplicate HTML-ID check
 - 1,000 sequential edit stress test
 - concurrent snapshot/edit stress test
+
+The integration layer exercises NG against the genuine Jayofelony `View`,
+`State`, components, fonts, plugin loader and real Flask/Jinja — so the
+private-API assumptions in `JayUIAdapter`, the readiness `503`, the recovery
+page's autoescaping and the transactional update path are all verified on the
+real stack, not just stubs. What it does **not** cover is anything that needs
+a physical display/touch panel (see below).
 
 Simulated screen matrix:
 
@@ -125,6 +155,12 @@ Physical checks still required:
 
 ## Release path
 
-`0.1.0-alpha1` -> Suite-harvest hardening -> Pi 4/480x320 validation -> fixes -> `0.2.0-beta1` -> broader Pi/display validation -> stable `1.0.0`.
+`0.1.0-alpha1` -> Suite-harvest hardening (**done → `0.1.0-alpha2`**) ->
+Pi 4/480x320 validation -> fixes -> `0.2.0-beta1` -> broader Pi/display
+validation -> stable `1.0.0`.
+
+We are at `0.1.0-alpha2`: the harvest hardening is complete in software. The
+next step is the real-hardware validation pass listed above; `0.2.0-beta1` is
+not tagged until that passes.
 
 Do not mark stable merely because sandbox tests pass. Maintain explicit `PASS`, `SIMULATED PASS`, and `NOT TESTED` labels in future reports.

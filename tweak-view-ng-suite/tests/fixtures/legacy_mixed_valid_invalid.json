@@ -1,0 +1,13 @@
+{
+  "VSS.face.font": "Huge",
+  "VSS.face.xy": "0,40",
+  "VSS.status.max_length": 28,
+  "VSS.status.unknown_prop": "drop-me",
+  "VSS.malformedkey": "no-prop-part",
+  "VSS.name.font": "Bold",
+  "garbage": {"nested": "ignored"},
+  "__custom_shapes__": {
+    "frame": {"type": "CustomRect", "props": {"xy": "0,0,479,319", "color": 0}},
+    "": {"type": "CustomLine", "props": {"xy": "0,0,1,1"}}
+  }
+}

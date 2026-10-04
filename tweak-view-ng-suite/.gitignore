@@ -1,0 +1,8 @@
+# Real Jayofelony framework checkout fetched by the integration test harness.
+# Never committed; re-created on demand from the pinned tag (see tests/integration/conftest.py).
+.cache/
+
+# Test / build artifacts
+.pytest_cache/
+__pycache__/
+*.pyc

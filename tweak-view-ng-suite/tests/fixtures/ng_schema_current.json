@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "target": "jayofelony-pwnagotchi-2.9.5.8-64bit",
+  "active_profile": "default",
+  "profiles": {
+    "default": {
+      "edits": {
+        "face": {"xy": [10, 40], "font": "Huge"},
+        "status": {"max_length": 26, "wrap": true}
+      },
+      "shapes": {
+        "divider": {"type": "line", "properties": {"xy": [0, 20, 480, 20], "color": 0}}
+      }
+    },
+    "night": {
+      "edits": {"face": {"xy": [20, 60]}},
+      "shapes": {}
+    }
+  },
+  "meta": {}
+}

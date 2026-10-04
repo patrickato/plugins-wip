@@ -1,4 +1,4 @@
-# Tweak View NG — 0.1.0-alpha1
+# Tweak View NG — 0.1.0-alpha2
 
 A hardened, resolution-independent successor to the original **Tweak View / Tweak View 2** concept for **Jayofelony Pwnagotchi 2.9.5.8 64-bit**.
 
@@ -30,6 +30,21 @@ This alpha has automated/simulated validation only. Physical Pi/display validati
 - Restore touched original properties and remove NG custom shapes when the plugin unloads.
 - No external web fonts/CDNs; editor works offline.
 
+## New in 0.1.0-alpha2 (suite-harvest hardening)
+
+- Layout is loaded and validated early, in `on_loaded()`, before the UI exists.
+- Per-entry corruption recovery: one bad profile/element/property/shape is
+  skipped with a reason instead of discarding the whole layout; a structured
+  load/import report is available in the state and readiness payloads.
+- Explicit readiness: an `init → loaded → waiting_ui → ready` phase machine, an
+  `api/ready` endpoint readable at any time, and a clear `503` (not a `500`) if
+  the API is hit before the UI is up.
+- Transactional edits: if saving fails, both runtime and the on-disk layout roll
+  back together, so they never disagree.
+- A minimal, JavaScript-free **recovery editor** at
+  `/plugins/tweak_view_ng/recovery` for when the main editor can't be used.
+- A real-Jayofelony integration test layer (`tests/integration/`).
+
 ## Install (alpha / test system)
 
 Copy `tweak_view_ng.py` to:
@@ -57,6 +72,12 @@ Restart Pwnagotchi, then open:
 http://<pwnagotchi-host>:8080/plugins/tweak_view_ng/
 ```
 
+If the full editor ever fails to load, the dependency-light fallback is at:
+
+```text
+http://<pwnagotchi-host>:8080/plugins/tweak_view_ng/recovery
+```
+
 ### Why `strict_version = false` by default?
 
 The alpha reports the runtime Pwnagotchi version but does not hard-stop on a mismatch. Set it to `true` if you want the plugin to refuse to initialize on anything except 2.9.5.8 while testing.
@@ -64,11 +85,25 @@ The alpha reports the runtime Pwnagotchi version but does not hard-stop on a mis
 ## Files
 
 - `tweak_view_ng.py` — deployable single-file plugin.
-- `tests/` — desktop compatibility/safety tests using a simulated Jay UI.
+- `tests/` — offline unit tests using a simulated Jay UI.
+- `tests/integration/` — tests against the **real** Jayofelony 2.9.5.8 framework
+  (see `tests/integration/README.md`).
+- `tests/fixtures/` — representative legacy and NG-schema layouts for regression.
 - `config.toml.example` — ready-to-paste config.
 - `install.sh` — simple installer for a Pwnagotchi.
 - `uninstall.sh` — disables/removes the plugin while preserving layout JSON.
 - `TEST_REPORT.md` — exact automated vs physical-test status.
+
+### Running the tests
+
+```bash
+cd tweak-view-ng-suite
+python3 -m pytest                    # offline unit suite
+python3 -m pytest tests/integration  # real-framework suite (auto-clones v2.9.5.8)
+```
+
+On the Pi itself, where `pwnagotchi` is already installed, the integration
+suite binds to the live framework with no clone.
 
 ## Safety / rollback
 

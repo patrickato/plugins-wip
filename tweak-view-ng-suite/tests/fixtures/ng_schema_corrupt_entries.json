@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "target": "jayofelony-pwnagotchi-2.9.5.8-64bit",
+  "active_profile": "missing_profile",
+  "profiles": {
+    "default": {
+      "edits": {
+        "face": {"xy": [10, 40], "font": "Huge", "bogus_prop": "drop"},
+        "status": "this-should-be-an-object",
+        "": {"xy": [1, 2]}
+      },
+      "shapes": {
+        "good_rect": {"type": "rect", "properties": {"xy": [0, 0, 10, 10]}},
+        "bad_type": {"type": "pentagon", "properties": {"xy": [0, 0, 5, 5]}},
+        "__reserved": {"type": "line", "properties": {}},
+        "notdict": 12345
+      }
+    },
+    "broken_profile": "not-an-object",
+    "healthy": {
+      "edits": {"name": {"font": "Bold"}},
+      "shapes": {}
+    }
+  },
+  "meta": {"note": "mixed-health NG file for recovery regression"}
+}

@@ -56,22 +56,24 @@ def test_plugin_merges_defaults():
     p=tv.TweakViewNG(); p.options={'history_limit':5}; p.on_loaded(); assert p.options['filename'].endswith('tweak_view_ng.json'); assert p.options['history_limit']==5
 
 def test_plugin_ui_setup_applies_saved_edit(tmp_path,monkeypatch):
-    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'legacy.json')}; p.on_loaded()
-    v=FakeView(480,320); v.add_element('face',Text('x',(1,2),font=fonts.Small))
+    # Layout exists on disk before on_loaded() preloads it (the real lifecycle).
+    st=tv.LayoutStore(str(tmp_path/'ng.json'))
+    d=st.empty(); d['profiles']['default']['edits']={'face':{'xy':[100,120],'font':'Huge'}}; st.save(d)
+    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'legacy.json')}
     monkeypatch.setattr(p,'_build_fonts',lambda: setattr(p,'_fonts',registry()))
-    p._store=tv.LayoutStore(str(tmp_path/'ng.json'))
-    d=p._store.empty(); d['profiles']['default']['edits']={'face':{'xy':[100,120],'font':'Huge'}}; p._store.save(d)
+    p.on_loaded()
+    v=FakeView(480,320); v.add_element('face',Text('x',(1,2),font=fonts.Small))
     p.on_ui_setup(v); assert tuple(v._state._state['face'].xy)==(100,120); assert v._state._state['face'].font is fonts.Huge
 
 def test_pending_element_applies_when_appears(tmp_path,monkeypatch):
-    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'none')}; p.on_loaded(); monkeypatch.setattr(p,'_build_fonts',lambda: setattr(p,'_fonts',registry()))
     st=tv.LayoutStore(str(tmp_path/'ng.json')); d=st.empty(); d['profiles']['default']['edits']={'later':{'xy':[7,8]}}; st.save(d)
+    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'none')}; monkeypatch.setattr(p,'_build_fonts',lambda: setattr(p,'_fonts',registry())); p.on_loaded()
     v=FakeView(); p.on_ui_setup(v); assert 'later' in p._pending_missing
     v.add_element('later',Text('x',(0,0),font=fonts.Small)); p.on_ui_update(v); assert tuple(v._state._state['later'].xy)==(7,8); assert 'later' not in p._pending_missing
 
 def test_unload_restores_and_removes_shapes(tmp_path,monkeypatch):
-    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'none')}; p.on_loaded(); monkeypatch.setattr(p,'_build_fonts',lambda: setattr(p,'_fonts',registry()))
     st=tv.LayoutStore(str(tmp_path/'ng.json')); d=st.empty(); d['profiles']['default']['edits']={'face':{'xy':[9,9]}}; d['profiles']['default']['shapes']={'r':{'type':'rect','properties':{'xy':[1,1,5,5]}}}; st.save(d)
+    p=tv.TweakViewNG(); p.options={'filename':str(tmp_path/'ng.json'),'legacy_filename':str(tmp_path/'none')}; monkeypatch.setattr(p,'_build_fonts',lambda: setattr(p,'_fonts',registry())); p.on_loaded()
     v=FakeView(); v.add_element('face',Text('x',(2,3),font=fonts.Small)); p.on_ui_setup(v); assert 'r' in v._state._state; p.on_unload(v); assert tuple(v._state._state['face'].xy)==(2,3); assert 'r' not in v._state._state
 
 def test_locking_survives_parallel_snapshot_and_edits():
