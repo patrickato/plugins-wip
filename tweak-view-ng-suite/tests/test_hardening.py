@@ -390,3 +390,29 @@ def test_recovery_update_rejects_unsafe_property(tmp_path, monkeypatch):
     result = p._route_api("api/recovery/update", FormReq("POST", {"element": "face", "property": "value", "value": "evil"}))
     assert isinstance(result, tuple) and result[1] == 400
     assert v._state._state["face"].value == "x"  # unchanged
+
+
+# --------------------------------------------------------------------------- #
+# CSRF / non-JSON response handling in the editor JS (hardware-found, 2.9.5.9)
+# --------------------------------------------------------------------------- #
+
+def test_editor_js_guards_against_non_json_responses():
+    """The api() helper must check content-type BEFORE calling r.json(), so a
+    stale-CSRF 400 (which flask-wtf returns as an HTML page) yields a clear
+    'session expired' message instead of the cryptic 'Unexpected token <'
+    JSON parse error. Regression guard for the on-hardware finding."""
+    js = tv.WEB_UI
+    # content-type is inspected
+    assert "content-type" in js
+    # the raw json() call is no longer unconditional (guarded by a ct check)
+    assert "ct.includes('application/json')" in js
+    # a human-readable CSRF/session message exists
+    assert "Session expired" in js
+    # csrf detection on 400
+    assert "csrf" in js.lower()
+
+
+def test_recovery_and_editor_still_have_no_external_deps():
+    for blob in (tv.WEB_UI, tv.RECOVERY_UI):
+        low = blob.lower()
+        assert "http://" not in low and "https://" not in low
