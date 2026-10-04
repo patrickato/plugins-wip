@@ -2,7 +2,8 @@
 
 Representative layout/config files used by the regression tests (suite-harvest
 item 7). These are **independent NG fixtures**: they illustrate the real-world
-shapes NG must ingest without copying anything from `tweak-view-suite/`.
+shapes NG must ingest. They were authored independently (not copied from the
+original Tweak View / the now-retired Suite).
 
 | File | Represents | Used to verify |
 |---|---|---|

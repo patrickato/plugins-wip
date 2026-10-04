@@ -2,21 +2,26 @@
 
 ## Identity
 
-This is a **separate project** from the existing `tweak-view-suite` in this repository. Do not merge, overwrite, delete, join, or treat that older suite as the working tree for this project.
-
 Project directory: `tweak-view-ng-suite/`
 Current release: `0.2.0-beta1`
 Primary software target: **Jayofelony Pwnagotchi 2.9.5.8 64-bit** (also runs on 2.9.5.9)
 
-### Permanent separation rule
+### Old Suite retired (2026-10-04)
 
-`tweak-view-suite/` and `tweak-view-ng-suite/` must remain independent projects with their own source, tests, config, documentation, release history, and development paths.
+The older `tweak-view-suite/` — a conservative bug-fix of the original Tweak View —
+has been **retired and removed** at the owner's request, since NG supersedes it for
+all everyday use. Everything the Suite did (position / font / label / label-spacing /
+max-length editing, save / revert / delete, a webhook page) NG does with a safer,
+richer editor, and the eight useful lessons identified from the Suite were already
+harvested into NG as native reimplementations (see
+`SEPARATION_AND_SUITE_HARVEST.md`, items 1–8, all ✅).
 
-While working on NG, do not modify files under `tweak-view-suite/` unless the repository owner explicitly requests separate work on that project.
-
-NG may study behavior or lessons from Suite and independently reimplement useful ideas, but the projects are not to be merged or overlaid.
-
-See `SEPARATION_AND_SUITE_HARVEST.md` for the full rule and the approved NG-native ideas identified from comparison with Suite.
+The Suite's remaining *unique* behaviors were deliberately **not** carried over
+because they conflict with NG's design: unrestricted raw-attribute editing with no
+safety allow-list, reapplying every tweak on every UI frame, and the flat `VSS.*`
+storage model (NG keeps `VSS.*` only as an import source). The retired project
+remains in git history if ever needed. **NG is now the sole Tweak View
+implementation in this repo.**
 
 ## Goal
 
@@ -70,9 +75,10 @@ Added in 0.1.0-alpha2 (harvest hardening):
 
 ## Suite-harvest gate before hardware validation
 
-Useful lessons from the separate `tweak-view-suite/` were documented for
-independent NG implementation. This did **not** authorize merging the projects,
-and nothing under `tweak-view-suite/` was modified.
+Useful lessons from the (now retired) `tweak-view-suite/` were documented and
+independently reimplemented in NG. The Suite was never merged in wholesale; the
+eight lessons below were rebuilt NG-native, and the Suite has since been removed
+(see "Old Suite retired" above).
 
 All eight NG-native additions are now implemented in `tweak-view-ng-suite/` and
 covered by independent tests (see `TEST_REPORT.md`):
