@@ -2,8 +2,10 @@ import sys, types, threading
 from pathlib import Path
 
 # ---- minimal pwnagotchi runtime stubs ----
-pwn = types.ModuleType('pwnagotchi'); pwn.__version__='2.9.5.8'; pwn.config={}
-plugins = types.ModuleType('pwnagotchi.plugins')
+# Marked __TWEAKVIEW_STUB__ so the real-framework harness in tests/integration/
+# can recognize and evict these if both suites share one interpreter.
+pwn = types.ModuleType('pwnagotchi'); pwn.__version__='2.9.5.8'; pwn.config={}; pwn.__TWEAKVIEW_STUB__=True
+plugins = types.ModuleType('pwnagotchi.plugins'); plugins.__TWEAKVIEW_STUB__=True
 class Plugin: pass
 plugins.Plugin=Plugin
 fonts = types.ModuleType('pwnagotchi.ui.fonts')
@@ -27,6 +29,7 @@ class LabeledValue(Widget):
         super().__init__(position,color); self.label=label; self.value=value; self.label_font=label_font; self.text_font=text_font; self.label_spacing=label_spacing
 for c in [Widget,Line,Rect,FilledRect,Text,LabeledValue]: setattr(components,c.__name__,c)
 ui=types.ModuleType('pwnagotchi.ui')
+for _m in (fonts,components,ui): _m.__TWEAKVIEW_STUB__=True
 sys.modules.update({'pwnagotchi':pwn,'pwnagotchi.plugins':plugins,'pwnagotchi.ui':ui,'pwnagotchi.ui.fonts':fonts,'pwnagotchi.ui.components':components})
 pwn.plugins=plugins
 
