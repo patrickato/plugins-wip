@@ -1,12 +1,25 @@
-# Tweak View NG — Separation Rule and Suite-Harvest Notes
+# Tweak View NG — Suite-Harvest Notes (and retirement record)
 
-## Hard separation rule
+## Status: the old Suite has been retired (2026-10-04)
 
-`tweak-view-ng-suite/` and `tweak-view-suite/` are separate projects.
+> The original separation rule below kept `tweak-view-suite/` and
+> `tweak-view-ng-suite/` as independent projects while NG was built by studying
+> the Suite. That job is done. The owner has decided NG supersedes the Suite for
+> all everyday use, so **`tweak-view-suite/` was removed** and NG is now the sole
+> Tweak View implementation in the repo.
+>
+> This document is kept as the record of **what was harvested and why nothing
+> more was** — the eight items below were reimplemented NG-native (all shipped by
+> `0.1.0-alpha2`), and the Suite's unique behaviors were deliberately left behind
+> (see "What NG should NOT inherit from Suite"). The retired Suite remains in git
+> history. The rules below are superseded and retained only for context.
 
-This is a permanent project rule unless the repository owner explicitly changes it later.
+## Hard separation rule (superseded — historical)
 
-Do **not**:
+`tweak-view-ng-suite/` and `tweak-view-suite/` were separate projects while NG
+was under development.
+
+While that rule was in force, the practice was to **not**:
 
 - merge the two projects;
 - join their working trees;
@@ -18,7 +31,8 @@ Do **not**:
 - share runtime/config files by accident;
 - make changes to `tweak-view-suite/` while working on `tweak-view-ng-suite/`.
 
-Both projects should retain their own source, documentation, tests, configuration, release history, and development path.
+Both projects retained their own source, documentation, tests, configuration,
+release history, and development path — until the Suite was retired.
 
 ### Project identities
 
