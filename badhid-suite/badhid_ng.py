@@ -24,8 +24,9 @@ It was built from the A1+A2 slice of this project's
 THE SAFETY LINE (non-negotiable - this is a lab instrument, not malware):
 
   * This file ships the FRAMEWORK and the SAFETY SCAFFOLDING, plus ONE
-    harmless proof-of-life payload (`payloads/demo_hello.duck`, which
-    types a benign echo line). It ships NO offensive payloads - no
+    harmless demo payloads (`payloads/*.duck`: a Hello World, a
+    sinister-looking-but-inert Notepad skull, and a rickroll). It ships NO
+    offensive payloads - no
     shells, credential grabbers, defender-disablers, persistence, or
     exfiltration. You author any real payloads yourself, in the
     `payloads_dir`, and point them only at hardware you own or have
@@ -103,7 +104,7 @@ DEFAULTS = {
     "auth_token": None,
 
     # Where your payloads live. Only *.duck / *.txt files here are listable
-    # and fireable. This plugin ships exactly one file here: demo_hello.duck.
+    # and fireable. This suite ships three harmless demos here.
     "payloads_dir": "/etc/pwnagotchi/badhid_ng/payloads",
 
     # The HID gadget device the composite gadget exposes. The plugin only
@@ -142,7 +143,7 @@ DEFAULTS = {
     # off unless you deliberately turn it on AND arm.
     "fire_on_enumerate": False,
     # The payload fired by fire_on_enumerate / the UI "fire default" button.
-    "default_payload": "demo_hello.duck",
+    "default_payload": "hello_world.duck",
 
     # Typing timing. inter_key_delay_ms slows typing so fast hosts don't drop
     # keystrokes; default_delay_ms is the implicit DELAY between payload lines.

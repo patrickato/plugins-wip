@@ -244,6 +244,23 @@ def test_payload_path_safety():
     check("rejects nested sep", p._payload_path("sub/ok.duck") is None)
 
 
+def test_shipped_payloads():
+    pdir = os.path.join(HERE, "..", "payloads")
+    files = sorted(f for f in os.listdir(pdir) if f.endswith(".duck"))
+    check("ships the three demo payloads",
+          set(files) == {"hello_world.duck", "rickroll.duck", "spooky_skull.duck"})
+    for f in files:
+        try:
+            acts = mod.parse_ducky(open(os.path.join(pdir, f), encoding="utf-8").read(),
+                                   max_actions=20000)
+            check(f"{f} parses and yields actions", len(acts) > 0)
+            # every parsed action can be flattened to reports without error
+            mod.actions_to_reports(acts)
+            check(f"{f} flattens to reports", True)
+        except Exception as exc:
+            check(f"{f} parses cleanly ({exc})", False)
+
+
 def main():
     test_keymap()
     test_parser_basic()
@@ -257,6 +274,7 @@ def main():
     test_arm_state()
     test_fire_gate()
     test_payload_path_safety()
+    test_shipped_payloads()
 
     print()
     if failures:

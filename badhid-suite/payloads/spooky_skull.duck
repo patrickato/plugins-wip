@@ -1,0 +1,41 @@
+REM spooky_skull.duck - a HARMLESS gag that LOOKS sinister.
+REM
+REM What it actually does: opens Notepad and TYPES text (an ASCII skull &
+REM crossbones with a spooky message). That is ALL. It runs no commands,
+REM downloads nothing, deletes nothing, changes nothing - it is just
+REM characters typed into a text editor you can close without saving. It is
+REM a demo to prove HID typing works, nothing more.
+REM
+REM Targets WINDOWS (uses Win+R to open Notepad). For macOS/Linux, replace
+REM the "open notepad" lines with your editor's launch keys (see rickroll.duck
+REM for the pattern). Only plug the device into hardware you own/are
+REM authorized to test.
+
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+REM give Notepad a moment to open and take focus
+DELAY 1800
+DEFAULTDELAY 15
+STRINGLN I SEE YOU
+ENTER
+STRINGLN       _______
+STRINGLN      /       \
+STRINGLN     | ()   () |
+STRINGLN     |    ^    |
+STRINGLN     |  \___/  |
+STRINGLN      \_______/
+ENTER
+STRINGLN     \\       //
+STRINGLN      \\     //
+STRINGLN       \\   //
+STRINGLN        \\ //
+STRINGLN         \X/
+STRINGLN         /X\
+STRINGLN        // \\
+STRINGLN       //   \\
+STRINGLN      //     \\
+STRINGLN     //       \\
+ENTER
+STRINGLN I'M COMING FOR YOU!

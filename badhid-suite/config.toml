@@ -65,13 +65,13 @@ port = 8083
 # Payloads
 # ---------------------------------------------------------------------
 # Only *.duck / *.txt files in this directory are listable and fireable. The
-# suite installs exactly one file here: demo_hello.duck (harmless). Put your
-# own payloads here, and point them only at hardware you own/are authorized
-# to test.
+# suite installs three HARMLESS demo payloads here: hello_world.duck,
+# spooky_skull.duck, rickroll.duck. Put your own payloads here too, and point
+# them only at hardware you own/are authorized to test.
 payloads_dir = "/etc/pwnagotchi/badhid_ng/payloads"
 
 # The payload used by the UI "fire default" button and by fire_on_enumerate.
-default_payload = "demo_hello.duck"
+default_payload = "hello_world.duck"
 
 # ---------------------------------------------------------------------
 # Arming (default: disarmed, manual-fire only)

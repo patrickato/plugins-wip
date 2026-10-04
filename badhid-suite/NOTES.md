@@ -16,7 +16,8 @@ the operator and kept off the repo:
 
 - **Shipped:** the USB-gadget plumbing, a DuckyScript-subset interpreter + US
   HID keymap, the arm/disarm model, token auth, `bind_scope`, the manual-fire
-  UI, loud logging, and **one harmless payload** that echoes a line.
+  UI, loud logging, and **three harmless demo payloads** (hello_world, an
+  inert Notepad skull gag, and a rickroll) — all type-only, no commands.
 - **Not shipped, by design:** every actual offensive payload (shells,
   credential capture, AV/defender tampering, persistence, exfiltration). Those
   are what turn keystroke injection into a compromise; the operator writes
@@ -109,8 +110,9 @@ Decisions:
    addressing if needed; note what you changed.
 2. Control server binds at the expected `bind_scope` URL; token auth rejects a
    wrong/absent token.
-3. Arm → fire `demo_hello.duck` into a text editor on one of your own old PCs;
-   confirm the echo line appears and one-shot disarm re-locks.
+3. Arm → fire `hello_world.duck` into a text editor on one of your own old PCs;
+   confirm the line appears and one-shot disarm re-locks. Then try
+   `spooky_skull.duck` and `rickroll.duck` (Windows) to confirm Win+R launches.
 4. A combo payload (e.g. `GUI r` then `STRINGLN notepad`) behaves on that host.
 5. `fire_on_enumerate` behaves only when explicitly enabled **and** armed.
 

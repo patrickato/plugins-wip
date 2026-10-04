@@ -1,0 +1,12 @@
+REM hello_world.duck - the simplest proof of life.
+REM
+REM HARMLESS: it waits for the host to settle, then types one line into
+REM whatever window currently has focus, and presses Enter. It runs no
+REM commands and changes nothing. Open a text editor on the target first so
+REM you can see it type.
+REM
+REM Targets any OS (it just types characters). Only plug the device into
+REM hardware you own or are authorized to test.
+
+DELAY 800
+STRINGLN Hello World! - typed by a BadHID device on your own lab machine.

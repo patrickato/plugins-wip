@@ -11,8 +11,8 @@ DuckyScript-subset runner.
 
 - **Ships:** the HID gadget plumbing (a setup script), a DuckyScript-subset
   interpreter + US keymap, an arm/disarm model, token auth, `bind_scope`, a
-  manual-fire web UI, and **one harmless demo payload** (`demo_hello.duck`,
-  which just echoes a line).
+  manual-fire web UI, and **three harmless demo payloads** (a Hello World, a
+  sinister-*looking* but inert Notepad skull, and a rickroll).
 - **Does not ship:** any offensive payload — no shells, credential grabbers,
   defender-disablers, persistence, or exfiltration. You author real payloads
   yourself.
@@ -47,7 +47,7 @@ DuckyScript-subset runner.
 
    ```bash
    sudo mkdir -p /etc/pwnagotchi/badhid_ng/payloads
-   sudo cp badhid-suite/payloads/demo_hello.duck /etc/pwnagotchi/badhid_ng/payloads/
+   sudo cp badhid-suite/payloads/*.duck /etc/pwnagotchi/badhid_ng/payloads/
    sudo cp badhid-suite/badhid_ng.py /etc/pwnagotchi/custom-plugins/
    sudo cp badhid-suite/setup_composite_gadget.sh /root/
    ```
@@ -78,6 +78,22 @@ DuckyScript-subset runner.
    shows the control URL at WARNING, e.g.
    `[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
 
+## The demo payloads (all harmless)
+
+The suite ships three proof-of-life payloads. None of them run a command,
+download anything, change anything, or persist — they only type characters.
+Point them only at a machine you own.
+
+| File | What it does | OS |
+|---|---|---|
+| `hello_world.duck` | Types one line into the focused window. The quietest proof it works. | any |
+| `spooky_skull.duck` | Opens Notepad and types an ASCII skull & crossbones with "I SEE YOU" / "I'M COMING FOR YOU!". Looks sinister, does **nothing** but type text you can close without saving. | Windows (adapt for mac/Linux) |
+| `rickroll.duck` | Opens the classic video in the default browser. | Windows (adapt for mac/Linux) |
+
+The two Windows demos use the **Win+R Run** box to launch Notepad / open the
+URL. Each file's header REM block has the one-line tweak for macOS/Linux (they
+just use that OS's launcher key instead of Win+R).
+
 ## Using it
 
 The control page (reachable at the logged URL, with your token) shows arm
@@ -89,9 +105,10 @@ Typical flow against one of your own old PCs:
 
 1. Plug the pi into the target PC's USB port.
 2. On the control page: **ARM** (opens a 120s window; one-shot by default).
-3. Click into a window on the target you want to type into.
-4. **FIRE** `demo_hello.duck`. It types the benign echo line. One-shot arming
-   disarms it again automatically.
+3. On the target, click into where it should type — an empty text editor for
+   `hello_world.duck` (the Windows demos open their own window, so just leave
+   the target at the desktop).
+4. **FIRE** the payload. One-shot arming disarms it again automatically after.
 
 Quick CLI smoke test (from somewhere that can reach the bound URL):
 
@@ -99,7 +116,8 @@ Quick CLI smoke test (from somewhere that can reach the bound URL):
 TOKEN=your-long-token
 BASE=http://127.0.0.1:8083      # or the tailscale URL from the log
 curl -s -X POST -H "Authorization: Bearer $TOKEN" $BASE/arm
-curl -s -X POST -H "Authorization: Bearer $TOKEN" --data "payload=demo_hello.duck&target=my-old-laptop" $BASE/fire
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  --data "payload=hello_world.duck&target=my-old-laptop" $BASE/fire
 ```
 
 ## Writing your own payloads

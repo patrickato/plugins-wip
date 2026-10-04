@@ -1,0 +1,25 @@
+REM rickroll.duck - harmless proof of life with a sense of humor.
+REM
+REM HARMLESS: opens the classic music video in the target's default browser.
+REM It runs no commands beyond opening a URL and changes nothing.
+REM
+REM Targets WINDOWS (uses Win+R "Run" to open the URL). For other OSes see
+REM the notes at the bottom. Only plug the device into hardware you own or
+REM are authorized to test.
+
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+REM --- adapting to other OSes ---
+REM macOS: replace the two lines above the URL with:
+REM   GUI SPACE          (open Spotlight)
+REM   DELAY 400
+REM   STRING safari
+REM   ENTER
+REM   DELAY 800
+REM   GUI l              (focus the address bar)
+REM   STRINGLN https://www.youtube.com/watch?v=dQw4w9WgXcQ
+REM Linux (GNOME): GUI opens Activities; type "firefox", ENTER, then address
+REM bar (CTRL l) and the URL. Exact keys vary by desktop environment.
