@@ -403,7 +403,14 @@ Repo layout:
 
 ## Credits & license
 
-Tweak View NG is a ground-up reimplementation for the Jayofelony fork, inspired by
-the original **Tweak View** (NurseJackass / Sniffleupagus) and **Tweak View 2**
-(Sniffleupagus / BraedenP232). Legacy import exists specifically so those users
-don't lose their layouts. Licensed **GPL-3.0**.
+Tweak View NG is an independent, ground-up reimplementation for the Jayofelony
+fork, built on the ideas of the plugins that pioneered live on-device UI editing:
+
+- **Original Tweak View** — NurseJackass & Sniffleupagus.
+- **Tweak View 2** (v2.0.0) — Sniffleupagus & BraedenP232
+  ([Sniffleupagus/pwnagotchi_plugins](https://github.com/Sniffleupagus/pwnagotchi_plugins)).
+- **Tweak View NG** — patrickato.
+
+The automatic legacy importer exists specifically so Tweak View / Tweak View 2
+users keep their layouts. Full attribution is in [CREDITS.md](CREDITS.md).
+Licensed **GPL-3.0**.

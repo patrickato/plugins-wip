@@ -2,6 +2,14 @@
 
 Primary target: Jayofelony Pwnagotchi v2.9.5.8 (64-bit).
 The only intentional private-API access is isolated in JayUIAdapter.
+
+Lineage / credit. Tweak View NG is an independent, ground-up reimplementation,
+but it stands on the shoulders of the plugins that pioneered live on-device UI
+editing for Pwnagotchi:
+  * Original "Tweak View" - NurseJackass & Sniffleupagus.
+  * "Tweak View 2" (v2.0.0) - Sniffleupagus & BraedenP232.
+Legacy import exists specifically so those plugins' users keep their layouts.
+See CREDITS.md for details and links.
 """
 
 import copy
@@ -547,6 +555,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "patrickato"
+    __credits__ = "Original Tweak View: NurseJackass & Sniffleupagus. Tweak View 2: Sniffleupagus & BraedenP232. See CREDITS.md."
     __version__ = "0.2.0-beta1"
     __license__ = "GPL3"
     __description__ = "Tweak View NG - an independent, hardened, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8/2.9.5.9. A separate plugin, not the original Tweak View / Tweak View 2 (concept lineage credited in the README)."
