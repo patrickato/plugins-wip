@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.1.0-alpha9
+
+Fine-adjustment, contextual help and a tasteful visual refresh — from the
+alpha8 on-hardware testing pass.
+
+### Fixed
+
+- **Stack now actually reflows the column.** The no-gap default distributed
+  elements within their *existing* min..max y span, so a set that was already
+  roughly spread out barely moved ("stack does nothing"). It now anchors at the
+  current top-most element and lays the rest out at an even, readable default
+  pitch (derived from the tallest element so rows never overlap), so the column
+  visibly tidies up every time. An explicit `gap` still wins.
+
+### Added
+
+- **1px nudge pad** — a touch-friendly directional pad (↑ ← → ↓) in the Position
+  card that moves the selected element exactly one pixel per click, for fine
+  adjustments without a keyboard. The twin of the existing arrow-key nudge; the
+  extreme-align pad (Left/Center/Right, Top/Middle/Bottom) sits right below it.
+- **Hover help mode** — the `?` button now toggles a help mode: a banner
+  appears and hovering *any* control (including the previously-undocumented
+  **+ Line / + Rect / + Ellipse** shape buttons, the element list, and every
+  pad) shows a plain-language bubble describing what it does.
+
+### Changed
+
+- **Element labels show on selected + hover only**, instead of every box
+  wearing its name at all times — far less clutter on a busy 480×320 layout.
+- **Tasteful visual refresh** (dark aesthetic kept): the right panel is now
+  grouped into titled section cards (Position / Arrange / Profile) rather than
+  hairline rules; unselected overlay boxes are dimmed so the selected one reads
+  clearly; spacing cleaned up; the header wraps cleanly at phone width (no more
+  horizontal scroll on mobile).
+
 ## 0.1.0-alpha8
 
 Final editor polish pass (on-hardware, "complete & polished" goal).

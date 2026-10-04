@@ -564,14 +564,18 @@ def test_match_rejects_bad(tmp_path, monkeypatch):
 
 def test_stack_elements_even(tmp_path, monkeypatch):
     p, v = _align_setup(tmp_path, monkeypatch)
-    # stack channel(y2), aps(y6), uptime(y10) -> even between 2 and 10, shared x
+    # stack channel(y2), aps(y6), uptime(y10): anchored at the top-most (y=2)
+    # and reflowed into an even, readable column (the alpha9 fix - the old
+    # distribute-within-span default barely moved already-spaced elements).
     r = p._route_api("api/stack", Req("POST", {"elements": ["channel", "aps", "uptime"]}))
     assert r["ok"] and len(r["stacked"]) == 3
     xs = {v._state._state[n].xy[0] for n in ("channel", "aps", "uptime")}
     assert len(xs) == 1  # all share one column
     ys = sorted(v._state._state[n].xy[1] for n in ("channel", "aps", "uptime"))
-    assert ys[0] == 2 and ys[-1] == 10
-    assert abs((ys[1] - ys[0]) - (ys[2] - ys[1])) <= 1  # even gaps
+    assert ys[0] == 2  # anchored at the current top-most
+    gap1, gap2 = ys[1] - ys[0], ys[2] - ys[1]
+    assert gap1 == gap2  # perfectly even
+    assert gap1 >= 12  # a sensible, visible default pitch (not a near-zero nudge)
 
 
 def test_stack_with_explicit_gap(tmp_path, monkeypatch):
@@ -614,3 +618,19 @@ def test_editor_js_has_polish_features():
     assert "renameProfile" in js and "deleteProfile" in js
     assert "toggleHelp" in js and 'id="help"' in js
     assert 'id="saved"' in js
+
+
+def test_editor_js_has_alpha9_features():
+    js = tv.WEB_UI
+    # fine 1px nudge pad (touch-friendly twin of the arrow keys)
+    assert "function nudge(" in js
+    assert "nudge(0,-1)" in js and "nudge(-1,0)" in js and "nudge(1,0)" in js and "nudge(0,1)" in js
+    # hover-based contextual help mode (the ? button toggles it)
+    assert "helpMode" in js and "data-help" in js
+    assert "showHelpBubble" in js and 'id="helpbubble"' in js
+    # shape-add buttons now carry help text (the gap the user flagged)
+    assert "+ Line" in js and "+ Rect" in js and "+ Ellipse" in js
+    # labels are selected+hover only, not always-on
+    assert ".box.sel>.blabel,.box:hover>.blabel" in js
+    # tasteful refresh: section cards replaced the hairline <hr>s
+    assert '<hr' not in js and 'class="card"' in js

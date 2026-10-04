@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha8"
+    __version__ = "0.1.0-alpha9"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
@@ -1217,14 +1217,17 @@ class TweakViewNG(plugins.Plugin):
         return jsonify({"ok": True, "element": element, "target": target, "axis": axis, "xy": new_xy})
 
     def _stack_elements(self, request):
-        """Stack a set of elements evenly down a column (the vertical-space
+        """Stack a set of elements into a clean column (the vertical-space
         feature). All elements share a common x (the first one's, or a given x)
-        and are spaced top-to-bottom with an even gap between the first and last.
+        and are spaced top-to-bottom, anchored at the current top-most element.
 
         Body: {"elements": ["a","b","c"], "x": <optional int>, "gap": <optional int>}.
-        With no gap, elements are evenly distributed between the current top-most
-        and bottom-most of the set; with a gap, they're stacked gap px apart from
-        the top-most.
+        With an explicit gap, elements are placed that many px apart from the
+        top-most. With no gap, a sensible default pitch is derived from the
+        tallest element so rows form an even, non-overlapping column that
+        visibly tidies up even when the elements were already roughly spaced
+        (the alpha8 "stack does nothing" bug: distributing within the existing
+        min..max span barely moved elements that were already spread out).
         """
         data = self._json_body(request)
         names = data.get("elements")
@@ -1252,12 +1255,16 @@ class TweakViewNG(plugins.Plugin):
         y0 = min(ys)
         if gap not in (None, "") and str(gap).lstrip("-").isdigit():
             step = int(gap)
-            targets = [y0 + step * i for i in range(len(ordered))]
         else:
-            y1 = max(ys)
-            span = y1 - y0
-            n = len(ordered)
-            targets = [y0 if n == 1 else int(round(y0 + span * i / (n - 1))) for i in range(n)]
+            # Default pitch: tall enough that the tallest row never overlaps the
+            # next, with a readable floor. Anchored at the top-most element so
+            # the column always visibly reflows into an even stack.
+            heights = []
+            for name in ordered:
+                ex, ey, extra = got[name]
+                heights.append((extra[1] - ey) if len(extra) >= 2 else 12)
+            step = max(max(heights) + 2, 12)
+        targets = [y0 + step * i for i in range(len(ordered))]
         self._push_history()
         changed = []
         for n, ny in zip(ordered, targets):
@@ -1367,17 +1374,33 @@ class TweakViewNG(plugins.Plugin):
 
 WEB_UI = r"""
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="csrf_token" content="{{ csrf_token() }}"><title>Tweak View NG</title>
-<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move;user-select:none;-webkit-user-select:none;touch-action:none}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}.helpbox{position:fixed;inset:10% 15%;background:var(--panel);border:1px solid var(--a);border-radius:8px;padding:16px 20px;overflow:auto;z-index:20;box-shadow:0 20px 60px #000a}.helpbox h3{color:var(--a);margin-top:0}.helpbox li{margin:5px 0;color:var(--text)}.helpbox b{color:var(--a)}#saved{min-width:70px;text-align:right}#saved.dirty{color:var(--bad)}#saved.ok{color:var(--ok)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important}
-.box.edited{border-color:var(--a)}
-.blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10cc;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+<style>:root{--bg:#0b0e10;--panel:#14191d;--card:#171d23;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer;transition:border-color .12s,background .12s}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 310px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line);padding:10px 12px 24px}.props h3{margin:6px 0 8px;font-size:15px}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:5px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff14;min-width:5px;min-height:5px;cursor:move;user-select:none;-webkit-user-select:none;touch-action:none;opacity:.5;transition:opacity .12s,border-color .12s}.box:hover{opacity:.95}.box.edited{opacity:.78;border-color:var(--a)}.box.sel{border:2px solid #00a7ff;background:#00a7ff24;opacity:1}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.row input,.row select{width:100%}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}#saved{min-width:66px;text-align:right}#saved.dirty{color:var(--bad)}#saved.ok{color:var(--ok)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 12px;margin:11px 0}
+.card .ctitle{color:var(--a);font-size:11px;letter-spacing:.07em;font-weight:600;margin:0 0 8px;text-transform:uppercase;opacity:.9}
+.pad-label{color:var(--dim);font-size:10px;margin:9px 0 4px}
+.pad-label:first-of-type{margin-top:0}
+.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important;opacity:1!important}
+.blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10d8;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis;display:none}
+.box.sel>.blabel,.box:hover>.blabel{display:block}
 .zone{position:absolute;background:repeating-linear-gradient(45deg,#5bd1ff0f,#5bd1ff0f 6px,transparent 6px,transparent 12px);pointer-events:none;border-top:1px dashed #5bd1ff44;border-bottom:1px dashed #5bd1ff44}
 .dot{color:var(--a);font-size:9px;margin-left:4px;vertical-align:middle}
 button.on{border-color:var(--a);background:#101a20;color:var(--a)}
-.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0}.align-pad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin:6px 0}.align-pad button{font-size:12px;padding:6px}
+.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:4px 0}.align-pad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin:4px 0}.align-pad button{font-size:12px;padding:6px}
 .align-grid button{font-size:12px;padding:6px}
+.nudge-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:168px;margin:4px 0}
+.nudge-pad button{padding:6px;font-size:14px;line-height:1}
+.nudge-pad span{display:flex;align-items:center;justify-content:center}
+.nudge-dot{color:var(--dim);font-size:10px}
 .hint{color:var(--dim);font-size:11px;margin:4px 0 2px}
+#help{position:fixed;left:0;right:0;top:50px;z-index:18;background:#101a20;border-bottom:1px solid var(--a);color:var(--text);font-size:12px;line-height:1.5;padding:8px 14px;display:none}
+#help b{color:var(--a)}
+#helpbubble{position:fixed;z-index:30;max-width:250px;background:#0b0e10;border:1px solid var(--a);border-radius:7px;padding:8px 10px;font-size:12px;line-height:1.45;color:var(--text);box-shadow:0 12px 34px #000b;pointer-events:none;display:none}
+body.help-on [data-help]{outline:1px dotted #5bd1ff66;outline-offset:2px}
+body.help-on button,body.help-on [data-help]{cursor:help}
+@media(prefers-reduced-motion:reduce){.box,button{transition:none}}
+@media(max-width:850px){body{overflow-x:hidden;overflow-y:auto;height:auto}header{position:sticky;top:0;z-index:5;flex-wrap:wrap;height:auto;min-height:50px;padding:6px 10px;row-gap:4px}header .grow{flex-basis:100%;height:0}#help{position:static;top:auto}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}
 </style></head>
-<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><span id="saved" class="muted" title="save state"></span><button id="helpBtn" onclick="toggleHelp()" title="keyboard shortcuts & help">?</button><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Align selected element</div><div class="align-pad"><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div><div class="hint">Match another element</div><div class="align-grid"><button onclick="matchCoord('x')" title="match X of another element">Match X of…</button><button onclick="matchCoord('y')" title="match Y of another element">Match Y of…</button></div><div class="hint">Stack elements down a column</div><div class="actions"><button onclick="stackElements()" title="stack several elements evenly down a column">≡ Stack…</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Layout profile</div><div class="actions"><select id="profile" style="flex:1;min-width:90px"></select><button onclick="newProfile()" title="new profile">New</button><button onclick="renameProfile()" title="rename this profile">Rename</button><button class="danger" onclick="deleteProfile()" title="delete this profile">Del</button></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main><div id="help" class="helpbox" style="display:none"><h3>Tweak View NG — editor help</h3><ul><li><b>Drag</b> a box to move it (snaps to lines/edges when <b>Snap</b> is on)</li><li><b>Arrow keys</b> nudge the selected element 1px; <b>Shift+arrow</b> = 10px</li><li><b>Align pad</b> snaps the selected element within its area</li><li><b>Match X/Y</b> lines it up with another element's exact position</li><li><b>Stack</b> spaces several elements evenly down a column</li><li><b>Red box</b> = crossing a divider line or off-screen (a warning, not a block)</li><li><b>Zones</b> shades the top/bottom strips; <b>Snap</b> toggles snapping</li><li><b>Profiles</b> keep separate named layouts (day / night / …)</li></ul><div class="actions"><button onclick="toggleHelp()">Close</button></div></div>
+<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><span id="saved" class="muted" title="save state"></span><button id="helpBtn" onclick="toggleHelp()" title="help mode — hover any control for what it does" data-help="Turn help mode on or off. While it's on, hovering any control shows what it does.">?</button><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging" data-help="When on, dragging snaps softly to the divider lines and screen edges.">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips" data-help="Shade the top and bottom status strips so you can see what you're aligning into.">Zones</button><button onclick="undo()" data-help="Step back through your edits.">Undo</button><button onclick="redo()" data-help="Re-apply an edit you just undid.">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()" data-help="Type to filter the element list by name."><div class="actions"><button onclick="addShape('line')" data-help="Add a custom line you can position and size — handy for dividers or underlines.">+ Line</button><button onclick="addShape('rect')" data-help="Add a custom rectangle outline — e.g. a box or badge around a value.">+ Rect</button><button onclick="addShape('ellipse')" data-help="Add a custom ellipse/circle outline — e.g. a status dot or ring.">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="card"><div class="actions"><button onclick="apply()" data-help="Save the edited properties above to the selected element.">Apply</button><button onclick="revertEl()" data-help="Undo every change to the selected element, back to its default.">Revert element</button><button class="danger" onclick="resetAll()" data-help="Clear every change in the current profile and start from defaults.">Reset profile</button></div></div><div class="card"><div class="ctitle">Position</div><p class="hint">Drag a box, or select one and use the arrow keys (Shift = 10px).</p><div class="pad-label">Nudge 1px</div><div class="nudge-pad" data-help="Move the selected element one pixel per click — the touch-friendly version of the arrow keys, for fine adjustments."><span></span><button onclick="nudge(0,-1)" title="up 1px">↑</button><span></span><button onclick="nudge(-1,0)" title="left 1px">←</button><span class="nudge-dot">1px</span><button onclick="nudge(1,0)" title="right 1px">→</button><span></span><button onclick="nudge(0,1)" title="down 1px">↓</button><span></span></div><div class="pad-label">Align to an edge</div><div class="align-pad" data-help="Snap the selected element to an edge (or the center) of the strip it lives in — one big jump, not a nudge."><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div></div><div class="card"><div class="ctitle">Arrange</div><div class="align-grid" data-help="Line the selected element up with another one: Match X copies another element's horizontal position; Match Y copies its vertical position."><button onclick="matchCoord('x')" title="match X of another element">Match X of…</button><button onclick="matchCoord('y')" title="match Y of another element">Match Y of…</button></div><div class="actions"><button onclick="stackElements()" data-help="Pick several elements and space them evenly down one column — turns a messy strip into a clean, even stack.">≡ Stack…</button></div></div><div class="card"><div class="ctitle">Profile</div><div class="actions"><select id="profile" style="flex:1;min-width:90px" data-help="Switch between named layouts, e.g. a day arrangement and a night one."></select><button onclick="newProfile()" title="new profile" data-help="Create a new named layout.">New</button><button onclick="renameProfile()" title="rename this profile" data-help="Rename the current layout (the default one is protected).">Rename</button><button class="danger" onclick="deleteProfile()" title="delete this profile" data-help="Delete the current layout (the default one is protected).">Del</button></div><div class="actions"><button onclick="exportCfg()" data-help="Download the whole layout as a JSON file, to back up or share.">Export</button><button onclick="document.getElementById('importFile').click()" data-help="Load a layout from a JSON file.">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></div></section></main><div id="help"><b>Help mode.</b> Hover any control for what it does. Quick keys: <b>drag</b> a box to move · <b>arrow keys</b> nudge 1px (<b>Shift</b> = 10px) · a <b>red box</b> warns it's off-screen or across a divider line. Click <b>?</b> again to exit.</div><div id="helpbubble"></div>
 <script>const CSRF=document.querySelector('meta[name=csrf_token]').content;
 let S=null,selected=null,drag=null;
 let snap=true, overlayZones=true, warnOverlap=false;
@@ -1421,6 +1444,7 @@ function renderList(){
     let li=document.createElement('li');
     li.className='el'+(n===selected?' sel':'');
     li.innerHTML=`<b>${esc(n)}</b>${isEdited(n)?'<span class=dot title="moved from default">●</span>':''}<span class=type>${esc(e.type)}</span>`;
+    li.setAttribute('data-help','Select this element, then drag it on the preview, nudge it, align it, or edit its properties on the right. A ● means it has been moved from its default.');
     li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
     ul.appendChild(li)
   })
@@ -1456,6 +1480,18 @@ async function undo(){try{await api('api/undo','POST',{});await refresh();reload
 async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
+// --- fine 1px nudge pad (touch-friendly twin of the arrow keys) ---
+function nudge(dx,dy){
+  if(!selected||!S||!S.elements[selected]){msg('select an element first',true);return}
+  let xy=S.elements[selected].properties.xy;
+  if(xy==null){msg('this element has no position to move',true);return}
+  if(!Array.isArray(xy))xy=String(xy).split(',');
+  let a=xy.map(Number);
+  a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}
+  let i=document.getElementById('p_xy');if(i)i.value=a.join(',');
+  apply()
+}
+
 // --- auto-align (server does the math) ---
 async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
 function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
@@ -1488,7 +1524,31 @@ async function deleteProfile(){
   if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
   try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
 }
-function toggleHelp(){let h=document.getElementById('help');h.style.display=(h.style.display==='none'||!h.style.display)?'block':'none'}
+// --- help mode: the ? button turns on hover tooltips over every control ---
+let helpMode=false;
+function toggleHelp(){
+  helpMode=!helpMode;
+  document.getElementById('helpBtn').classList.toggle('on',helpMode);
+  document.body.classList.toggle('help-on',helpMode);
+  document.getElementById('help').style.display=helpMode?'block':'none';
+  if(!helpMode)hideHelpBubble()
+}
+function showHelpBubble(el){
+  let bub=document.getElementById('helpbubble');
+  bub.textContent=el.getAttribute('data-help');
+  bub.style.display='block';
+  let r=el.getBoundingClientRect();
+  let left=Math.max(8,Math.min(r.left,window.innerWidth-bub.offsetWidth-10));
+  let top=r.bottom+6;
+  if(top+bub.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-bub.offsetHeight-6);
+  bub.style.left=left+'px';bub.style.top=top+'px'
+}
+function hideHelpBubble(){let b=document.getElementById('helpbubble');if(b)b.style.display='none'}
+document.addEventListener('mouseover',ev=>{
+  if(!helpMode)return;
+  let el=ev.target.closest('[data-help]');
+  if(el)showHelpBubble(el);else hideHelpBubble()
+});
 function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){

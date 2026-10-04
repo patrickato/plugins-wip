@@ -41,6 +41,7 @@ function renderList(){
     let li=document.createElement('li');
     li.className='el'+(n===selected?' sel':'');
     li.innerHTML=`<b>${esc(n)}</b>${isEdited(n)?'<span class=dot title="moved from default">●</span>':''}<span class=type>${esc(e.type)}</span>`;
+    li.setAttribute('data-help','Select this element, then drag it on the preview, nudge it, align it, or edit its properties on the right. A ● means it has been moved from its default.');
     li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
     ul.appendChild(li)
   })
@@ -76,6 +77,18 @@ async function undo(){try{await api('api/undo','POST',{});await refresh();reload
 async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
+// --- fine 1px nudge pad (touch-friendly twin of the arrow keys) ---
+function nudge(dx,dy){
+  if(!selected||!S||!S.elements[selected]){msg('select an element first',true);return}
+  let xy=S.elements[selected].properties.xy;
+  if(xy==null){msg('this element has no position to move',true);return}
+  if(!Array.isArray(xy))xy=String(xy).split(',');
+  let a=xy.map(Number);
+  a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}
+  let i=document.getElementById('p_xy');if(i)i.value=a.join(',');
+  apply()
+}
+
 // --- auto-align (server does the math) ---
 async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
 function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
@@ -108,7 +121,31 @@ async function deleteProfile(){
   if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
   try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
 }
-function toggleHelp(){let h=document.getElementById('help');h.style.display=(h.style.display==='none'||!h.style.display)?'block':'none'}
+// --- help mode: the ? button turns on hover tooltips over every control ---
+let helpMode=false;
+function toggleHelp(){
+  helpMode=!helpMode;
+  document.getElementById('helpBtn').classList.toggle('on',helpMode);
+  document.body.classList.toggle('help-on',helpMode);
+  document.getElementById('help').style.display=helpMode?'block':'none';
+  if(!helpMode)hideHelpBubble()
+}
+function showHelpBubble(el){
+  let bub=document.getElementById('helpbubble');
+  bub.textContent=el.getAttribute('data-help');
+  bub.style.display='block';
+  let r=el.getBoundingClientRect();
+  let left=Math.max(8,Math.min(r.left,window.innerWidth-bub.offsetWidth-10));
+  let top=r.bottom+6;
+  if(top+bub.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-bub.offsetHeight-6);
+  bub.style.left=left+'px';bub.style.top=top+'px'
+}
+function hideHelpBubble(){let b=document.getElementById('helpbubble');if(b)b.style.display='none'}
+document.addEventListener('mouseover',ev=>{
+  if(!helpMode)return;
+  let el=ev.target.closest('[data-help]');
+  if(el)showHelpBubble(el);else hideHelpBubble()
+});
 function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){
