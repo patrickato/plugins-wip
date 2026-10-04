@@ -1,18 +1,20 @@
-# Tweak View NG 0.1.0-alpha2 — Test Report
+# Tweak View NG 0.2.0-beta1 — Test Report
 
 ## Result
 
-**Desktop/simulated status: PASS**
+**Desktop/simulated status: PASS** · **Hardware status: PASS** (Pi 4 + 480×320
+ILI9486 TFT, Jayofelony 2.9.5.9)
 
 - Python compile: PASS
 - `compileall`: PASS
-- Pytest, offline unit suite (`tests/`): **59 passed**
+- Pytest, offline unit suite (`tests/`): **77 passed**
 - Pytest, real-Jayofelony integration suite (`tests/integration/`):
   **16 passed, 1 skipped** (the skip is a loader helper added after the 2.9.5.8
   tag)
 - Embedded browser JavaScript syntax (`node --check`): PASS
 - Shell script syntax (`sh -n`): PASS
 - HTML duplicate-id check: PASS
+- **On-hardware: PASS** — see "Hardware validation" below.
 
 The integration suite binds to the genuine Jayofelony 2.9.5.8 framework (pinned
 to the `v2.9.5.8` tag) through the headless `DummyDisplay`, so the results below
@@ -128,34 +130,43 @@ The engine does not contain per-resolution layout constants.
 - Full lifecycle (`on_loaded` → `on_ui_setup` → update → undo → unload) against
   a real `View` inside a real Flask app context.
 
-## NOT YET PHYSICALLY TESTED
+## Hardware validation (PASS)
 
-Partially verified against the real framework in software, but still requiring a
-real Pwnagotchi image/display before they can be marked PASS:
+Verified live on a Pi 4 + 3.5" 480×320 ILI9486 TFT running Jayofelony **2.9.5.9**,
+across the alpha3→alpha9 on-device passes:
 
-1. Jayofelony 2.9.5.8 plugin loader import **on a real booted image** (the
-   importlib load path itself is now exercised in CI against the tagged source).
-2. Flask/**CSRF** behavior through the live Jay web UI (NG's webhook + Jinja
-   render are exercised with real Flask, but live CSRF tokens and routing under
-   the running daemon are not).
+1. ✅ Plugin loader import on a real booted image — clean load, reaches `ready`
+   with all configured properties/shapes applied (log-confirmed).
+2. ✅ Flask/**CSRF** behavior through the live Jay web UI — the editor and
+   `api/ready` / `api/health` / `api/state` all work under the running daemon; a
+   stale CSRF token yields the graceful "session expired" message, not a crash.
+3. ✅ Physical display refresh after forced updates — edits are visible on the TFT.
+4. ✅ Full edit → persist → **reboot** → restore cycle, confirmed on the panel.
+5. ✅ Undo/Redo and reset on hardware.
+6. ✅ The complete editor UX on-device: live drag, arrow-key and 1px-pad nudge,
+   align pad, Match X/Y, Stack, named profiles, and hover help mode.
+7. ✅ The JavaScript-free recovery editor.
 
-Not covered at all without hardware:
+## NOT YET TESTED (not gating beta)
 
-3. Physical framebuffer/e-ink refresh after forced updates.
-4. Your Pi 4 + 480×320 ILI9486/XPT2046 display (and touch).
-5. Pi Zero 2W performance/memory behavior.
-6. Pi 3 / Pi 5 behavior.
-7. Multiple actual display drivers and rotations.
-8. Interaction with a large real-world set of third-party plugins adding/removing widgets dynamically.
-9. Long-duration operation while Pwnagotchi is actively updating its UI.
+Broader coverage to do on the way to `1.0.0`, as hardware becomes available:
 
-Until those are checked, this package is **alpha**, not a stable release.
+1. Pi Zero 2W performance/memory behavior.
+2. Pi 3 / Pi 5 behavior.
+3. Multiple actual display drivers and rotations (only 480×320 ILI9486 so far).
+4. Interaction with a large real-world set of third-party plugins adding/removing
+   widgets dynamically.
+5. Long-duration soak while Pwnagotchi is actively updating its UI.
+
+This package is **beta**: the feature set is complete and validated on the
+reference hardware. It is not yet marked stable `1.0.0` pending the broader
+multi-device coverage above.
 
 ## How to reproduce
 
 ```sh
 cd tweak-view-ng-suite
-python3 -m pytest                       # 59 offline unit tests
+python3 -m pytest                       # 77 offline unit tests
 python3 -m pytest tests/integration     # 16 real-framework tests (auto-clones v2.9.5.8)
 # or point at a local checkout / the Pi itself:
 PWNAGOTCHI_SRC=/path/to/pwnagotchi python3 -m pytest tests/integration

@@ -4,6 +4,32 @@ Status: **implemented in `0.1.0-alpha4`** (built on the alpha3 CSRF branch).
 Features 1–3 + all companions landed; see "Implemented" below. The original
 proposal is kept beneath it as the design record.
 
+## Implemented (alpha5-alpha9, on-hardware pass)
+
+Found and fixed through live testing on the Pi, then polished:
+
+- alpha9: **stack reflow fix** (the no-gap default now anchors at the top-most
+  element and uses an even, readable pitch, so it visibly tidies a column
+  instead of barely moving already-spaced elements); a **1px nudge pad** for
+  fine, keyboard-free adjustments; **hover help mode** (the `?` button turns on
+  per-control tooltips that finally document +Line/+Rect/+Ellipse); **labels
+  on selected + hover only**; and a **tasteful visual refresh** — titled
+  section cards, dimmed unselected boxes, cleaner spacing, mobile header wrap.
+- alpha5: fixed dead drag (startDrag rebuilt the overlay and detached the box).
+- alpha6: **per-element alignment** replaced the confusing per-strip buttons —
+  an align pad (Left/Center/Right, Top/Middle/Bottom) acting on the selected
+  element within its own region; plus red-box-clears-on-drop and
+  top-strip-no-longer-always-red fixes.
+- alpha7: the overlay is never rebuilt mid-drag, so a box can't freeze/detach
+  when the pwnagotchi UI updates while you hold it.
+- alpha8 (polish): **Match X / Match Y** of another element; **Stack** elements
+  evenly down a column (the chosen alternative to text rotation); **Rename /
+  Delete** profiles with the default protected; a header **saved** indicator and
+  a **help overlay**.
+
+Text rotation was considered and deliberately skipped — see the alpha8
+changelog note.
+
 ## Implemented (alpha4)
 
 - **Real-time drag** — the overlay box follows the cursor during the drag;

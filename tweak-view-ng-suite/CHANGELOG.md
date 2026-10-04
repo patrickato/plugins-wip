@@ -1,5 +1,156 @@
 # Changelog
 
+## 0.2.0-beta1
+
+First beta. The editor feature set is complete and has been validated live on
+hardware (Pi 4 + 480×320 TFT, Jayofelony 2.9.5.9) across the alpha3→alpha9
+on-device passes. This release is about packaging it for real users — no new
+editor behavior, just graduation polish.
+
+### Added
+
+- **Plug-and-play one-line installer.** `install.sh` is now a `curl … | sudo sh`
+  installer: it auto-detects the plugin directory from `config.toml`'s
+  `custom_plugins` (falling back to the Jayofelony default), backs up any existing
+  copy, syntax-checks the download before installing, adds a
+  `[main.plugins.tweak_view_ng]` section only if one isn't already present (never
+  clobbering user settings), restarts Pwnagotchi, and prints the editor URL. It
+  works both piped from GitHub and from a local checkout, and is idempotent.
+- **Complete, user-facing README** covering what it does, requirements, one-line
+  and manual install, a walkthrough of every editor feature, the configuration
+  table, storage/safety, legacy import, uninstall, and troubleshooting.
+
+### Changed
+
+- Version bumped `0.1.0-alpha9` → `0.2.0-beta1`.
+- `uninstall.sh` now also auto-detects the plugin directory; `config.toml.example`
+  documents that only `enabled` is required and the rest are optional defaults.
+
+### Notes
+
+- The consolidated history (alpha5→alpha9) lands on `main` with this release; the
+  per-feature alpha branches are retired.
+- The durable core channel-hop fix (`core-patches/`) is tracked separately — it
+  patches Pwnagotchi core, not this plugin.
+
+## 0.1.0-alpha9
+
+Fine-adjustment, contextual help and a tasteful visual refresh — from the
+alpha8 on-hardware testing pass.
+
+### Fixed
+
+- **Stack now actually reflows the column.** The no-gap default distributed
+  elements within their *existing* min..max y span, so a set that was already
+  roughly spread out barely moved ("stack does nothing"). It now anchors at the
+  current top-most element and lays the rest out at an even, readable default
+  pitch (derived from the tallest element so rows never overlap), so the column
+  visibly tidies up every time. An explicit `gap` still wins.
+
+### Added
+
+- **1px nudge pad** — a touch-friendly directional pad (↑ ← → ↓) in the Position
+  card that moves the selected element exactly one pixel per click, for fine
+  adjustments without a keyboard. The twin of the existing arrow-key nudge; the
+  extreme-align pad (Left/Center/Right, Top/Middle/Bottom) sits right below it.
+- **Hover help mode** — the `?` button now toggles a help mode: a banner
+  appears and hovering *any* control (including the previously-undocumented
+  **+ Line / + Rect / + Ellipse** shape buttons, the element list, and every
+  pad) shows a plain-language bubble describing what it does.
+
+### Changed
+
+- **Element labels show on selected + hover only**, instead of every box
+  wearing its name at all times — far less clutter on a busy 480×320 layout.
+- **Tasteful visual refresh** (dark aesthetic kept): the right panel is now
+  grouped into titled section cards (Position / Arrange / Profile) rather than
+  hairline rules; unselected overlay boxes are dimmed so the selected one reads
+  clearly; spacing cleaned up; the header wraps cleanly at phone width (no more
+  horizontal scroll on mobile).
+
+## 0.1.0-alpha8
+
+Final editor polish pass (on-hardware, "complete & polished" goal).
+
+### Added
+
+- **Match X / Match Y of another element** — snap the selected element's x or
+  y to another element's exact coordinate (`api/match`).
+- **Stack elements down a column** — pick several elements and space them
+  evenly down a shared column (`api/stack`), with an optional fixed gap. This is
+  the "use the vertical space" feature (chosen over true text rotation, which
+  would need a custom rotated-text renderer and looks poor on a 1-bit TFT).
+- **Fuller profile controls** — Rename and Delete alongside New/switch; the
+  default profile is protected (`api/profile` now takes `op: switch|rename|delete`).
+- **Saved indicator** in the header and a **help overlay** (the `?` button)
+  listing drag, arrow-nudge, align, match, stack, red-box and profile behavior.
+
+### Notes
+
+- Text rotation was considered and deliberately not built: pwnagotchi's text
+  widgets draw horizontally with no rotation parameter, so it would require a
+  custom rendered-and-rotated widget that reads poorly on the mono display.
+  Vertical stacking covers the real need.
+
+## 0.1.0-alpha7
+## 0.1.0-alpha7
+
+Fix: dragged box could freeze/detach from its element.
+
+### Fixed
+
+- **Box froze and detached during a drag when the pwnagotchi UI updated.** The
+  editor rebuilds its box overlay whenever the `/ui` preview image reloads
+  (every 7s, and on the face/stats changing). Rebuilding mid-drag destroyed the
+  box being dragged along with its live pointer handlers, stranding the box
+  while the element stayed put. Now the overlay is never rebuilt while a drag is
+  in progress: `drawBoxes()` returns early, the preview `onload` redraw is
+  skipped, and the 7s auto-reload pauses, all until the drag ends — then one
+  clean refresh repaints the committed position. (Replaces the alpha6
+  keep-at-cursor guard, which was the source of the detach.)
+
+## 0.1.0-alpha6
+## 0.1.0-alpha6
+
+Editor fixes + redesign of alignment, from on-hardware testing feedback.
+
+### Changed
+
+- **Alignment is now per-element, not per-strip.** Testing showed the
+  "Align top / Align bottom" strip buttons were confusing (people read them as
+  "align THIS element to the top/bottom") and brittle (a 14px-tall top strip,
+  elements sitting exactly on a divider line counting as "outside" a strip).
+  Replaced with an intuitive align pad on the selected element: Left / Center /
+  Right and Top / Middle / Bottom, each snapping within the element's own region
+  (bounded by the divider lines / screen). Works on a single element — no
+  "need 2 elements" error. New `api/align` body: `{element, edge}`.
+
+### Fixed
+
+- **Warning box stayed red after dropping.** `.warn` is now cleared on release.
+- **Top-strip elements were always red.** The crossing check flagged any box
+  touching a divider line; a thin top strip sits against line1 permanently.
+  Now it only warns on a real straddle (box center past the line) or a box
+  pushed off a screen edge.
+- **Box snapped back when the pwnagotchi UI updated mid-move.** `drawBoxes` now
+  keeps the box being dragged at the cursor position instead of repainting it
+  from saved state on a background `/ui` refresh.
+
+## 0.1.0-alpha5
+## 0.1.0-alpha5
+
+Bugfix for the alpha4 editor upgrades, found in on-hardware testing.
+
+### Fixed
+
+- **Drag was dead in alpha4.** `startDrag` called `drawBoxes()`, which rebuilt
+  the overlay and detached the very element being grabbed, so pointer events
+  never fired (the browser did text-selection instead). Now it marks the box
+  selected in place without rebuilding, preventDefaults the pointerdown, and
+  captures the pointer reliably. Added `user-select:none`/`touch-action:none`
+  to boxes and `pointer-events:none` to the name labels so they can't steal the
+  drag. Real-time drag works.
+
 ## 0.1.0-alpha4
 
 Editor UX upgrade pass (see `EDITOR_UPGRADES.md`). Makes positioning feel like a

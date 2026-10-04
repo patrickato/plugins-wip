@@ -16,7 +16,7 @@ const api=async(path,method='GET',body=null)=>{
   let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j
 };
 
-function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}
+function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted';if(!bad&&/✓/.test(t)){let sv=document.getElementById('saved');if(sv){sv.textContent='saved ✓';sv.className='ok'}}}
 
 async function refresh(){
   try{
@@ -41,6 +41,7 @@ function renderList(){
     let li=document.createElement('li');
     li.className='el'+(n===selected?' sel':'');
     li.innerHTML=`<b>${esc(n)}</b>${isEdited(n)?'<span class=dot title="moved from default">●</span>':''}<span class=type>${esc(e.type)}</span>`;
+    li.setAttribute('data-help','Select this element, then drag it on the preview, nudge it, align it, or edit its properties on the right. A ● means it has been moved from its default.');
     li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
     ul.appendChild(li)
   })
@@ -76,8 +77,76 @@ async function undo(){try{await api('api/undo','POST',{});await refresh();reload
 async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
+// --- fine 1px nudge pad (touch-friendly twin of the arrow keys) ---
+function nudge(dx,dy){
+  if(!selected||!S||!S.elements[selected]){msg('select an element first',true);return}
+  let xy=S.elements[selected].properties.xy;
+  if(xy==null){msg('this element has no position to move',true);return}
+  if(!Array.isArray(xy))xy=String(xy).split(',');
+  let a=xy.map(Number);
+  a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}
+  let i=document.getElementById('p_xy');if(i)i.value=a.join(',');
+  apply()
+}
+
 // --- auto-align (server does the math) ---
-async function alignStrip(strip,op){try{await api('api/align','POST',{strip,op});await refresh();reloadPreview();msg(op+' '+strip+' ✓')}catch(e){msg(e.message,true)}}
+async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
+function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
+async function matchCoord(axis){
+  if(!selected){msg('select an element first',true);return}
+  let opts=otherNames();if(!opts.length){msg('no other elements',true);return}
+  let target=prompt('Match '+axis.toUpperCase()+' of which element?\n\n'+opts.join(', '));
+  if(!target)return; target=target.trim();
+  if(!S.elements[target]){msg('no element named '+target,true);return}
+  try{await api('api/match','POST',{element:selected,target,axis});await refresh();reloadPreview();msg('matched '+axis.toUpperCase()+' of '+target+' ✓')}catch(e){msg(e.message,true)}
+}
+async function stackElements(){
+  let all=S?Object.keys(S.elements).sort():[];
+  let pick=prompt('Stack which elements down a column?\nComma-separated names (top-to-bottom order is auto):\n\n'+all.join(', '),selected||'');
+  if(!pick)return;
+  let names=pick.split(',').map(x=>x.trim()).filter(Boolean);
+  if(names.length<2){msg('name at least 2 elements',true);return}
+  let bad=names.filter(n=>!S.elements[n]);if(bad.length){msg('unknown: '+bad.join(', '),true);return}
+  try{await api('api/stack','POST',{elements:names});await refresh();reloadPreview();msg('stacked '+names.length+' ✓')}catch(e){msg(e.message,true)}
+}
+async function renameProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't rename the default profile",true);return}
+  let nn=prompt('Rename profile "'+cur+'" to:');if(!nn)return;
+  try{await api('api/profile','POST',{op:'rename',name:cur,new:nn.trim()});selected=null;await refresh();reloadPreview();msg('renamed ✓')}catch(e){msg(e.message,true)}
+}
+async function deleteProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't delete the default profile",true);return}
+  if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
+  try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
+}
+// --- help mode: the ? button turns on hover tooltips over every control ---
+let helpMode=false;
+function toggleHelp(){
+  helpMode=!helpMode;
+  document.getElementById('helpBtn').classList.toggle('on',helpMode);
+  document.body.classList.toggle('help-on',helpMode);
+  document.getElementById('help').style.display=helpMode?'block':'none';
+  if(!helpMode)hideHelpBubble()
+}
+function showHelpBubble(el){
+  let bub=document.getElementById('helpbubble');
+  bub.textContent=el.getAttribute('data-help');
+  bub.style.display='block';
+  let r=el.getBoundingClientRect();
+  let left=Math.max(8,Math.min(r.left,window.innerWidth-bub.offsetWidth-10));
+  let top=r.bottom+6;
+  if(top+bub.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-bub.offsetHeight-6);
+  bub.style.left=left+'px';bub.style.top=top+'px'
+}
+function hideHelpBubble(){let b=document.getElementById('helpbubble');if(b)b.style.display='none'}
+document.addEventListener('mouseover',ev=>{
+  if(!helpMode)return;
+  let el=ev.target.closest('[data-help]');
+  if(el)showHelpBubble(el);else hideHelpBubble()
+});
+function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';
@@ -108,6 +177,7 @@ function scale(){
 function boxRect(xy){let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;return {x,y,w,h}}
 
 function drawBoxes(){
+  if(drag)return;            // never rebuild the overlay mid-drag (would kill the live box)
   let ov=document.getElementById('overlay');ov.innerHTML='';
   if(!S)return;
   // safe-zone shading for top/bottom strips
@@ -145,13 +215,15 @@ function applySnap(a){
 }
 
 function crosses(a){
-  // true if the dragged element's y sits on/over a divider line or past an edge
-  let r=boxRect(a),ty=topLineY(),by=botLineY();
-  if(r.y<=0||r.x<=0||r.x>=S.screen.width||r.y>=S.screen.height)return true;
-  // crossing a divider line vertically
-  let yTop=r.y,yBot=r.y+(a.length>=4?r.h:10);
-  if(yTop<=ty&&yBot>=ty)return true;
-  if(yTop<=by&&yBot>=by)return true;
+  // warn only on a real problem: pushed off a screen edge, or a box clearly
+  // straddling a divider line (center on the far side), not merely touching a
+  // line it legitimately sits against.
+  let r=boxRect(a),ty=topLineY(),by=botLineY(),W=S.screen.width,H=S.screen.height;
+  if(r.x<0||r.y<0||r.x+r.w>W||r.y+r.h>H)return true;
+  let h=(a.length>=4?r.h:10),cy=r.y+h/2,tol=2;
+  // straddling line1: top above it AND bottom well below it
+  if(r.y<ty-tol && (r.y+h)>ty+tol)return true;
+  if(r.y<by-tol && (r.y+h)>by+tol)return true;
   if(warnOverlap){
     for(let [n,e] of Object.entries(S.elements)){
       if(n===drag.n)continue;let oxy=e.properties.xy;if(!oxy)continue;
@@ -164,7 +236,8 @@ function crosses(a){
 }
 
 function liveBox(a){
-  let b=document.querySelector('.box[data-name="'+(drag&&drag.n?drag.n.replace(/"/g,'\\"'):'')+'"]');
+  if(!drag)return;
+  let b=[...document.querySelectorAll('.box')].find(x=>x.dataset.name===drag.n);
   if(!b)return;
   let r=boxRect(a);
   b.style.left=(r.x/S.screen.width*100)+'%';b.style.top=(r.y/S.screen.height*100)+'%';
@@ -172,12 +245,16 @@ function liveBox(a){
 }
 
 function startDrag(ev,n,xy){
-  selected=n;renderList();renderEditor();drawBoxes();
+  ev.preventDefault();
+  selected=n;renderList();renderEditor();
+  // mark the current box selected WITHOUT rebuilding the overlay (rebuilding
+  // would detach the element being dragged and kill the drag).
+  document.querySelectorAll('.box').forEach(b=>b.classList.toggle('sel',b.dataset.name===n));
   let frame=document.getElementById('frame').getBoundingClientRect();
   drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};
-  let b=document.querySelector('.box[data-name="'+n.replace(/"/g,'\\"')+'"]');
-  if(b){ev.target.setPointerCapture?ev.target.setPointerCapture(ev.pointerId):0}
-  ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag
+  let el=ev.currentTarget||ev.target;
+  try{el.setPointerCapture(ev.pointerId)}catch(e){}
+  el.onpointermove=moveDrag;el.onpointerup=endDrag;el.onpointercancel=endDrag
 }
 
 function moveDrag(ev){
@@ -192,7 +269,7 @@ function moveDrag(ev){
   liveBox(a)   // Feature 1: box follows cursor live
 }
 
-function endDrag(ev){if(!drag)return;drag=null;apply()}
+function endDrag(ev){if(!drag)return;drag=null;document.querySelectorAll('.box.warn').forEach(b=>b.classList.remove('warn'));apply()}
 
 // --- Feature: arrow-key nudge ---
 window.addEventListener('keydown',ev=>{
@@ -210,6 +287,6 @@ window.addEventListener('keydown',ev=>{
 });
 
 window.addEventListener('resize',scale);
-document.getElementById('preview').onload=()=>{scale();drawBoxes()};
+document.getElementById('preview').onload=()=>{if(drag)return;scale();drawBoxes()};
 refresh();
-setInterval(()=>reloadPreview(),7000);
+setInterval(()=>{if(!drag)reloadPreview()},7000);

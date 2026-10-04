@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha4"
+    __version__ = "0.2.0-beta1"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
@@ -1001,18 +1001,58 @@ class TweakViewNG(plugins.Plugin):
             return jsonify({"ok": True, "result": result})
         if path == "api/profile" and request.method == "POST":
             data = self._json_body(request)
+            op = str(data.get("op", "switch")).strip()  # switch (default) | rename | delete
             name = str(data.get("name", "")).strip()
-            if not name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in name):
+
+            def _valid(nm):
+                return nm and not any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in nm)
+
+            profiles = self._layout.setdefault("profiles", {})
+            if op == "delete":
+                if name == "default":
+                    raise _HttpResult((jsonify({"ok": False, "error": "cannot delete the default profile"}), 400))
+                if name not in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "no such profile"}), 404))
+                self._push_history()
+                self._restore_runtime_to_originals()
+                profiles.pop(name, None)
+                if self._layout.get("active_profile") == name:
+                    self._layout["active_profile"] = "default"
+                result = self._apply_profile(redraw=True)
+                self._save()
+                return jsonify({"ok": True, "result": result, "active": self._layout["active_profile"]})
+            if op == "rename":
+                new = str(data.get("new", "")).strip()
+                if not _valid(new):
+                    raise _HttpResult((jsonify({"ok": False, "error": "invalid new profile name"}), 400))
+                if name == "default":
+                    raise _HttpResult((jsonify({"ok": False, "error": "cannot rename the default profile"}), 400))
+                if name not in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "no such profile"}), 404))
+                if new in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "a profile named %s already exists" % new}), 409))
+                self._push_history()
+                profiles[new] = profiles.pop(name)
+                if self._layout.get("active_profile") == name:
+                    self._layout["active_profile"] = new
+                self._save()
+                return jsonify({"ok": True, "active": self._layout["active_profile"]})
+            # default: switch to (creating if needed)
+            if not _valid(name):
                 raise _HttpResult((jsonify({"ok": False, "error": "invalid profile name"}), 400))
             self._push_history()
             self._restore_runtime_to_originals()
-            self._layout.setdefault("profiles", {}).setdefault(name, {"edits": {}, "shapes": {}})
+            profiles.setdefault(name, {"edits": {}, "shapes": {}})
             self._layout["active_profile"] = name
             result = self._apply_profile(redraw=True)
             self._save()
             return jsonify({"ok": True, "result": result})
         if path == "api/align" and request.method == "POST":
-            return self._align_strip(request)
+            return self._align_element(request)
+        if path == "api/match" and request.method == "POST":
+            return self._match_coordinate(request)
+        if path == "api/stack" and request.method == "POST":
+            return self._stack_elements(request)
         if path == "api/recovery/update" and request.method == "POST":
             return self._recovery_update(request)
         # Unknown mutating route - a clean 404, not a rolled-back edit.
@@ -1040,97 +1080,202 @@ class TweakViewNG(plugins.Plugin):
             return None
         return parts[0], parts[1], parts[2:]
 
-    def _strip_members(self, snap):
-        """Partition editable text-like elements into top/bottom strips by the
-        divider lines (line1/line2), falling back to screen fractions. Only
-        elements that expose an xy and are not the divider lines themselves."""
-        w = snap["screen"]["width"]
+    def _region_bounds(self, snap, y):
+        """Return (y_lo, y_hi) of the horizontal band a given y sits in, bounded
+        by the divider lines (line1/line2) and the screen. Lets "top of this
+        element's area" mean the top of whichever band it lives in, so the
+        direction buttons are never surprising regardless of how thin a strip
+        is."""
         h = snap["screen"]["height"]
         els = snap["elements"]
 
-        def _line_y(name, default):
+        def _ly(name):
             e = els.get(name)
-            if not e:
-                return default
-            got = self._xy_of(e.get("properties", {}))
-            return got[1] if got else default
+            got = self._xy_of(e.get("properties", {})) if e else None
+            return got[1] if got else None
 
-        top_y = _line_y("line1", int(h * 0.12))
-        bot_y = _line_y("line2", int(h * 0.88))
-        top, bottom = [], []
-        for name, e in els.items():
-            if name in ("line1", "line2"):
-                continue
-            got = self._xy_of(e.get("properties", {}))
-            if not got:
-                continue
-            x, y, _extra = got
-            if y < top_y:
-                top.append((name, x, y, got))
-            elif y > bot_y:
-                bottom.append((name, x, y, got))
-        return top, bottom, w, h
+        l1 = _ly("line1")
+        l2 = _ly("line2")
+        edges = [0, h - 1]
+        if l1 is not None:
+            edges.append(l1)
+        if l2 is not None:
+            edges.append(l2)
+        edges = sorted(set(edges))
+        # lo = largest edge at or below y; hi = smallest edge strictly above y.
+        lo, hi = 0, h - 1
+        for e in edges:
+            if e <= y and e > lo:
+                lo = e
+            if e > y and e < hi:
+                hi = e
+        # keep a sane minimum band so a sliver strip still has room
+        if hi - lo < 4:
+            hi = min(h - 1, lo + 4)
+        return lo, hi
 
-    def _align_strip(self, request):
-        """Align (shared baseline) or distribute (even gaps) the elements in the
-        top or bottom status strip, as one undoable transaction.
+    def _align_element(self, request):
+        """Snap ONE selected element to an edge (or center) of the region it
+        lives in. Intuitive per-element alignment:
 
-        Body: {"strip": "top"|"bottom", "op": "align"|"distribute"}.
-        Baseline = median y of the strip (least total movement). Distribute =
-        equal gaps between the leftmost and rightmost element's x positions.
+        Body: {"element": "<name>", "edge": top|bottom|left|right|hcenter|vcenter}.
+
+        "top"/"bottom" snap within the element's horizontal band (bounded by the
+        divider lines / screen); "left"/"right"/"hcenter" work across the screen
+        width; "vcenter" centers within the band. One undoable transaction.
         """
         data = self._json_body(request)
-        strip = str(data.get("strip", "")).strip()
-        op = str(data.get("op", "")).strip()
-        if strip not in ("top", "bottom") or op not in ("align", "distribute"):
-            raise _HttpResult((jsonify({"ok": False, "error": "strip must be top/bottom, op must be align/distribute"}), 400))
+        element = str(data.get("element", "")).strip()
+        edge = str(data.get("edge", "")).strip()
+        valid = {"top", "bottom", "left", "right", "hcenter", "vcenter"}
+        if not element or edge not in valid:
+            raise _HttpResult((jsonify({"ok": False, "error": "element required; edge must be one of %s" % sorted(valid)}), 400))
+        if not self._adapter.has(element):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element"}), 404))
         snap = self._adapter.snapshot()
-        top, bottom, _w, _h = self._strip_members(snap)
-        members = top if strip == "top" else bottom
-        if len(members) < 2:
-            raise _HttpResult((jsonify({"ok": False, "error": "need at least 2 elements in the %s strip" % strip}), 409))
+        props = snap["elements"].get(element, {}).get("properties", {})
+        got = self._xy_of(props)
+        if got is None:
+            raise _HttpResult((jsonify({"ok": False, "error": "element has no position to align"}), 409))
+        x, y, extra = got
+        w = snap["screen"]["width"]
+        h = snap["screen"]["height"]
+        # element footprint (width/height) from a 4-point widget, else a small default
+        ew = (extra[0] - x) if len(extra) >= 2 else 18
+        eh = (extra[1] - y) if len(extra) >= 2 else 12
+        ew = max(1, ew); eh = max(1, eh)
 
-        # Compute new positions.
-        new_xy = {}
-        if op == "align":
-            ys = sorted(m[2] for m in members)
-            mid = len(ys) // 2
-            target_y = ys[mid] if len(ys) % 2 else (ys[mid - 1] + ys[mid]) // 2
-            for name, x, _y, got in members:
-                extra = got[2]
-                if len(extra) >= 2:  # 4-point widget: shift y, keep height
-                    dy = target_y - _y
-                    new_xy[name] = [x, target_y, extra[0], extra[1] + dy]
-                else:
-                    new_xy[name] = [x, target_y]
-        else:  # distribute
-            ordered = sorted(members, key=lambda m: m[1])
-            x_first, x_last = ordered[0][1], ordered[-1][1]
-            n = len(ordered)
-            span = x_last - x_first
-            for i, (name, x, y, got) in enumerate(ordered):
-                nx = x_first if n == 1 else int(round(x_first + span * i / (n - 1)))
-                extra = got[2]
-                if extra and len(extra) >= 2:
-                    dx = nx - x
-                    new_xy[name] = [nx, y, extra[0] + dx, extra[1]]
-                else:
-                    new_xy[name] = [nx, y]
+        nx, ny = x, y
+        if edge in ("top", "bottom", "vcenter"):
+            lo, hi = self._region_bounds(snap, y)
+            if edge == "top":
+                ny = lo
+            elif edge == "bottom":
+                ny = max(lo, hi - eh)
+            else:  # vcenter
+                ny = max(lo, lo + ((hi - lo) - eh) // 2)
+        else:
+            if edge == "left":
+                nx = 0
+            elif edge == "right":
+                nx = max(0, w - ew)
+            else:  # hcenter
+                nx = max(0, (w - ew) // 2)
 
-        # Apply as one transaction (runs inside _mutating_route -> rollback-safe).
+        if len(extra) >= 2:
+            new_xy = [nx, ny, nx + ew, ny + eh]
+        else:
+            new_xy = [nx, ny]
+
         self._push_history()
         profile = self._profile()
-        changed = []
-        for name, xy in new_xy.items():
-            profile.setdefault("edits", {}).setdefault(name, {})["xy"] = xy
-            try:
-                self._adapter.apply_properties(name, {"xy": xy}, self._originals)
-                changed.append(name)
-            except Exception as exc:
-                LOG.warning("Tweak View NG: align failed for %s: %s", name, exc)
+        profile.setdefault("edits", {}).setdefault(element, {})["xy"] = new_xy
+        self._adapter.apply_properties(element, {"xy": new_xy}, self._originals)
         self._save()
         self._adapter.redraw()
-        return jsonify({"ok": True, "strip": strip, "op": op, "changed": sorted(changed)})
+        return jsonify({"ok": True, "element": element, "edge": edge, "xy": new_xy})
+
+    def _apply_xy(self, element, new_xy):
+        """Set one element's xy in the active profile + runtime (caller handles
+        the transaction/history/save)."""
+        self._profile().setdefault("edits", {}).setdefault(element, {})["xy"] = new_xy
+        self._adapter.apply_properties(element, {"xy": new_xy}, self._originals)
+
+    def _match_coordinate(self, request):
+        """Match the selected element's x or y to another element's coordinate.
+
+        Body: {"element": "<name>", "target": "<other>", "axis": "x"|"y"}.
+        """
+        data = self._json_body(request)
+        element = str(data.get("element", "")).strip()
+        target = str(data.get("target", "")).strip()
+        axis = str(data.get("axis", "")).strip()
+        if not element or not target or axis not in ("x", "y"):
+            raise _HttpResult((jsonify({"ok": False, "error": "element, target and axis (x|y) required"}), 400))
+        if element == target:
+            raise _HttpResult((jsonify({"ok": False, "error": "element and target must differ"}), 400))
+        if not self._adapter.has(element):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element"}), 404))
+        if not self._adapter.has(target):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown target"}), 404))
+        snap = self._adapter.snapshot()
+        g_el = self._xy_of(snap["elements"].get(element, {}).get("properties", {}))
+        g_tg = self._xy_of(snap["elements"].get(target, {}).get("properties", {}))
+        if g_el is None or g_tg is None:
+            raise _HttpResult((jsonify({"ok": False, "error": "both elements need a position"}), 409))
+        x, y, extra = g_el
+        tx, ty, _te = g_tg
+        if axis == "x":
+            nx, ny = tx, y
+        else:
+            nx, ny = x, ty
+        new_xy = [nx, ny] + ([nx + (extra[0] - x), ny + (extra[1] - y)] if len(extra) >= 2 else [])
+        self._push_history()
+        self._apply_xy(element, new_xy)
+        self._save()
+        self._adapter.redraw()
+        return jsonify({"ok": True, "element": element, "target": target, "axis": axis, "xy": new_xy})
+
+    def _stack_elements(self, request):
+        """Stack a set of elements into a clean column (the vertical-space
+        feature). All elements share a common x (the first one's, or a given x)
+        and are spaced top-to-bottom, anchored at the current top-most element.
+
+        Body: {"elements": ["a","b","c"], "x": <optional int>, "gap": <optional int>}.
+        With an explicit gap, elements are placed that many px apart from the
+        top-most. With no gap, a sensible default pitch is derived from the
+        tallest element so rows form an even, non-overlapping column that
+        visibly tidies up even when the elements were already roughly spaced
+        (the alpha8 "stack does nothing" bug: distributing within the existing
+        min..max span barely moved elements that were already spread out).
+        """
+        data = self._json_body(request)
+        names = data.get("elements")
+        if not isinstance(names, list) or len([n for n in names if isinstance(n, str)]) < 2:
+            raise _HttpResult((jsonify({"ok": False, "error": "need at least 2 elements to stack"}), 400))
+        names = [n for n in names if isinstance(n, str)]
+        missing = [n for n in names if not self._adapter.has(n)]
+        if missing:
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element(s): %s" % ", ".join(missing)}), 404))
+        snap = self._adapter.snapshot()
+        got = {}
+        for n in names:
+            g = self._xy_of(snap["elements"].get(n, {}).get("properties", {}))
+            if g is None:
+                raise _HttpResult((jsonify({"ok": False, "error": "%s has no position" % n}), 409))
+            got[n] = g
+        # order the elements by current y so the stack keeps their visual order
+        ordered = sorted(names, key=lambda n: got[n][1])
+        xs = [got[n][0] for n in ordered]
+        ys = [got[n][1] for n in ordered]
+        col_x = data.get("x")
+        col_x = int(col_x) if isinstance(col_x, (int, float)) or (isinstance(col_x, str) and col_x.strip().lstrip("-").isdigit()) else min(xs)
+        gap = data.get("gap")
+        h = snap["screen"]["height"]
+        y0 = min(ys)
+        if gap not in (None, "") and str(gap).lstrip("-").isdigit():
+            step = int(gap)
+        else:
+            # Default pitch: tall enough that the tallest row never overlaps the
+            # next, with a readable floor. Anchored at the top-most element so
+            # the column always visibly reflows into an even stack.
+            heights = []
+            for name in ordered:
+                ex, ey, extra = got[name]
+                heights.append((extra[1] - ey) if len(extra) >= 2 else 12)
+            step = max(max(heights) + 2, 12)
+        targets = [y0 + step * i for i in range(len(ordered))]
+        self._push_history()
+        changed = []
+        for n, ny in zip(ordered, targets):
+            x, y, extra = got[n]
+            ny = max(0, min(ny, h - 1))
+            new_xy = [col_x, ny] + ([col_x + (extra[0] - x), ny + (extra[1] - y)] if len(extra) >= 2 else [])
+            self._apply_xy(n, new_xy)
+            changed.append(n)
+        self._save()
+        self._adapter.redraw()
+        return jsonify({"ok": True, "stacked": changed, "x": col_x})
 
     # ------------------------------------------------------------------ #
     # Minimal server-rendered recovery editor (harvest item 8)
@@ -1229,17 +1374,33 @@ class TweakViewNG(plugins.Plugin):
 
 WEB_UI = r"""
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="csrf_token" content="{{ csrf_token() }}"><title>Tweak View NG</title>
-<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important}
-.box.edited{border-color:var(--a)}
-.blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10cc;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+<style>:root{--bg:#0b0e10;--panel:#14191d;--card:#171d23;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer;transition:border-color .12s,background .12s}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 310px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line);padding:10px 12px 24px}.props h3{margin:6px 0 8px;font-size:15px}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:5px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff14;min-width:5px;min-height:5px;cursor:move;user-select:none;-webkit-user-select:none;touch-action:none;opacity:.5;transition:opacity .12s,border-color .12s}.box:hover{opacity:.95}.box.edited{opacity:.78;border-color:var(--a)}.box.sel{border:2px solid #00a7ff;background:#00a7ff24;opacity:1}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.row input,.row select{width:100%}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}#saved{min-width:66px;text-align:right}#saved.dirty{color:var(--bad)}#saved.ok{color:var(--ok)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 12px;margin:11px 0}
+.card .ctitle{color:var(--a);font-size:11px;letter-spacing:.07em;font-weight:600;margin:0 0 8px;text-transform:uppercase;opacity:.9}
+.pad-label{color:var(--dim);font-size:10px;margin:9px 0 4px}
+.pad-label:first-of-type{margin-top:0}
+.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important;opacity:1!important}
+.blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10d8;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis;display:none}
+.box.sel>.blabel,.box:hover>.blabel{display:block}
 .zone{position:absolute;background:repeating-linear-gradient(45deg,#5bd1ff0f,#5bd1ff0f 6px,transparent 6px,transparent 12px);pointer-events:none;border-top:1px dashed #5bd1ff44;border-bottom:1px dashed #5bd1ff44}
 .dot{color:var(--a);font-size:9px;margin-left:4px;vertical-align:middle}
 button.on{border-color:var(--a);background:#101a20;color:var(--a)}
-.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0}
+.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:4px 0}.align-pad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin:4px 0}.align-pad button{font-size:12px;padding:6px}
 .align-grid button{font-size:12px;padding:6px}
+.nudge-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:168px;margin:4px 0}
+.nudge-pad button{padding:6px;font-size:14px;line-height:1}
+.nudge-pad span{display:flex;align-items:center;justify-content:center}
+.nudge-dot{color:var(--dim);font-size:10px}
 .hint{color:var(--dim);font-size:11px;margin:4px 0 2px}
+#help{position:fixed;left:0;right:0;top:50px;z-index:18;background:#101a20;border-bottom:1px solid var(--a);color:var(--text);font-size:12px;line-height:1.5;padding:8px 14px;display:none}
+#help b{color:var(--a)}
+#helpbubble{position:fixed;z-index:30;max-width:250px;background:#0b0e10;border:1px solid var(--a);border-radius:7px;padding:8px 10px;font-size:12px;line-height:1.45;color:var(--text);box-shadow:0 12px 34px #000b;pointer-events:none;display:none}
+body.help-on [data-help]{outline:1px dotted #5bd1ff66;outline-offset:2px}
+body.help-on button,body.help-on [data-help]{cursor:help}
+@media(prefers-reduced-motion:reduce){.box,button{transition:none}}
+@media(max-width:850px){body{overflow-x:hidden;overflow-y:auto;height:auto}header{position:sticky;top:0;z-index:5;flex-wrap:wrap;height:auto;min-height:50px;padding:6px 10px;row-gap:4px}header .grow{flex-basis:100%;height:0}#help{position:static;top:auto}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}
 </style></head>
-<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Auto-align strips</div><div class="align-grid"><button onclick="alignStrip('top','align')">Align top</button><button onclick="alignStrip('top','distribute')">Distribute top</button><button onclick="alignStrip('bottom','align')">Align bottom</button><button onclick="alignStrip('bottom','distribute')">Distribute bottom</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
+<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><span id="saved" class="muted" title="save state"></span><button id="helpBtn" onclick="toggleHelp()" title="help mode — hover any control for what it does" data-help="Turn help mode on or off. While it's on, hovering any control shows what it does.">?</button><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging" data-help="When on, dragging snaps softly to the divider lines and screen edges.">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips" data-help="Shade the top and bottom status strips so you can see what you're aligning into.">Zones</button><button onclick="undo()" data-help="Step back through your edits.">Undo</button><button onclick="redo()" data-help="Re-apply an edit you just undid.">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()" data-help="Type to filter the element list by name."><div class="actions"><button onclick="addShape('line')" data-help="Add a custom line you can position and size — handy for dividers or underlines.">+ Line</button><button onclick="addShape('rect')" data-help="Add a custom rectangle outline — e.g. a box or badge around a value.">+ Rect</button><button onclick="addShape('ellipse')" data-help="Add a custom ellipse/circle outline — e.g. a status dot or ring.">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="card"><div class="actions"><button onclick="apply()" data-help="Save the edited properties above to the selected element.">Apply</button><button onclick="revertEl()" data-help="Undo every change to the selected element, back to its default.">Revert element</button><button class="danger" onclick="resetAll()" data-help="Clear every change in the current profile and start from defaults.">Reset profile</button></div></div><div class="card"><div class="ctitle">Position</div><p class="hint">Drag a box, or select one and use the arrow keys (Shift = 10px).</p><div class="pad-label">Nudge 1px</div><div class="nudge-pad" data-help="Move the selected element one pixel per click — the touch-friendly version of the arrow keys, for fine adjustments."><span></span><button onclick="nudge(0,-1)" title="up 1px">↑</button><span></span><button onclick="nudge(-1,0)" title="left 1px">←</button><span class="nudge-dot">1px</span><button onclick="nudge(1,0)" title="right 1px">→</button><span></span><button onclick="nudge(0,1)" title="down 1px">↓</button><span></span></div><div class="pad-label">Align to an edge</div><div class="align-pad" data-help="Snap the selected element to an edge (or the center) of the strip it lives in — one big jump, not a nudge."><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div></div><div class="card"><div class="ctitle">Arrange</div><div class="align-grid" data-help="Line the selected element up with another one: Match X copies another element's horizontal position; Match Y copies its vertical position."><button onclick="matchCoord('x')" title="match X of another element">Match X of…</button><button onclick="matchCoord('y')" title="match Y of another element">Match Y of…</button></div><div class="actions"><button onclick="stackElements()" data-help="Pick several elements and space them evenly down one column — turns a messy strip into a clean, even stack.">≡ Stack…</button></div></div><div class="card"><div class="ctitle">Profile</div><div class="actions"><select id="profile" style="flex:1;min-width:90px" data-help="Switch between named layouts, e.g. a day arrangement and a night one."></select><button onclick="newProfile()" title="new profile" data-help="Create a new named layout.">New</button><button onclick="renameProfile()" title="rename this profile" data-help="Rename the current layout (the default one is protected).">Rename</button><button class="danger" onclick="deleteProfile()" title="delete this profile" data-help="Delete the current layout (the default one is protected).">Del</button></div><div class="actions"><button onclick="exportCfg()" data-help="Download the whole layout as a JSON file, to back up or share.">Export</button><button onclick="document.getElementById('importFile').click()" data-help="Load a layout from a JSON file.">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></div></section></main><div id="help"><b>Help mode.</b> Hover any control for what it does. Quick keys: <b>drag</b> a box to move · <b>arrow keys</b> nudge 1px (<b>Shift</b> = 10px) · a <b>red box</b> warns it's off-screen or across a divider line. Click <b>?</b> again to exit.</div><div id="helpbubble"></div>
 <script>const CSRF=document.querySelector('meta[name=csrf_token]').content;
 let S=null,selected=null,drag=null;
 let snap=true, overlayZones=true, warnOverlap=false;
@@ -1258,7 +1419,7 @@ const api=async(path,method='GET',body=null)=>{
   let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j
 };
 
-function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}
+function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted';if(!bad&&/✓/.test(t)){let sv=document.getElementById('saved');if(sv){sv.textContent='saved ✓';sv.className='ok'}}}
 
 async function refresh(){
   try{
@@ -1283,6 +1444,7 @@ function renderList(){
     let li=document.createElement('li');
     li.className='el'+(n===selected?' sel':'');
     li.innerHTML=`<b>${esc(n)}</b>${isEdited(n)?'<span class=dot title="moved from default">●</span>':''}<span class=type>${esc(e.type)}</span>`;
+    li.setAttribute('data-help','Select this element, then drag it on the preview, nudge it, align it, or edit its properties on the right. A ● means it has been moved from its default.');
     li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
     ul.appendChild(li)
   })
@@ -1318,8 +1480,76 @@ async function undo(){try{await api('api/undo','POST',{});await refresh();reload
 async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
+// --- fine 1px nudge pad (touch-friendly twin of the arrow keys) ---
+function nudge(dx,dy){
+  if(!selected||!S||!S.elements[selected]){msg('select an element first',true);return}
+  let xy=S.elements[selected].properties.xy;
+  if(xy==null){msg('this element has no position to move',true);return}
+  if(!Array.isArray(xy))xy=String(xy).split(',');
+  let a=xy.map(Number);
+  a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}
+  let i=document.getElementById('p_xy');if(i)i.value=a.join(',');
+  apply()
+}
+
 // --- auto-align (server does the math) ---
-async function alignStrip(strip,op){try{await api('api/align','POST',{strip,op});await refresh();reloadPreview();msg(op+' '+strip+' ✓')}catch(e){msg(e.message,true)}}
+async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
+function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
+async function matchCoord(axis){
+  if(!selected){msg('select an element first',true);return}
+  let opts=otherNames();if(!opts.length){msg('no other elements',true);return}
+  let target=prompt('Match '+axis.toUpperCase()+' of which element?\n\n'+opts.join(', '));
+  if(!target)return; target=target.trim();
+  if(!S.elements[target]){msg('no element named '+target,true);return}
+  try{await api('api/match','POST',{element:selected,target,axis});await refresh();reloadPreview();msg('matched '+axis.toUpperCase()+' of '+target+' ✓')}catch(e){msg(e.message,true)}
+}
+async function stackElements(){
+  let all=S?Object.keys(S.elements).sort():[];
+  let pick=prompt('Stack which elements down a column?\nComma-separated names (top-to-bottom order is auto):\n\n'+all.join(', '),selected||'');
+  if(!pick)return;
+  let names=pick.split(',').map(x=>x.trim()).filter(Boolean);
+  if(names.length<2){msg('name at least 2 elements',true);return}
+  let bad=names.filter(n=>!S.elements[n]);if(bad.length){msg('unknown: '+bad.join(', '),true);return}
+  try{await api('api/stack','POST',{elements:names});await refresh();reloadPreview();msg('stacked '+names.length+' ✓')}catch(e){msg(e.message,true)}
+}
+async function renameProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't rename the default profile",true);return}
+  let nn=prompt('Rename profile "'+cur+'" to:');if(!nn)return;
+  try{await api('api/profile','POST',{op:'rename',name:cur,new:nn.trim()});selected=null;await refresh();reloadPreview();msg('renamed ✓')}catch(e){msg(e.message,true)}
+}
+async function deleteProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't delete the default profile",true);return}
+  if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
+  try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
+}
+// --- help mode: the ? button turns on hover tooltips over every control ---
+let helpMode=false;
+function toggleHelp(){
+  helpMode=!helpMode;
+  document.getElementById('helpBtn').classList.toggle('on',helpMode);
+  document.body.classList.toggle('help-on',helpMode);
+  document.getElementById('help').style.display=helpMode?'block':'none';
+  if(!helpMode)hideHelpBubble()
+}
+function showHelpBubble(el){
+  let bub=document.getElementById('helpbubble');
+  bub.textContent=el.getAttribute('data-help');
+  bub.style.display='block';
+  let r=el.getBoundingClientRect();
+  let left=Math.max(8,Math.min(r.left,window.innerWidth-bub.offsetWidth-10));
+  let top=r.bottom+6;
+  if(top+bub.offsetHeight>window.innerHeight-6)top=Math.max(6,r.top-bub.offsetHeight-6);
+  bub.style.left=left+'px';bub.style.top=top+'px'
+}
+function hideHelpBubble(){let b=document.getElementById('helpbubble');if(b)b.style.display='none'}
+document.addEventListener('mouseover',ev=>{
+  if(!helpMode)return;
+  let el=ev.target.closest('[data-help]');
+  if(el)showHelpBubble(el);else hideHelpBubble()
+});
+function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';
@@ -1350,6 +1580,7 @@ function scale(){
 function boxRect(xy){let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;return {x,y,w,h}}
 
 function drawBoxes(){
+  if(drag)return;            // never rebuild the overlay mid-drag (would kill the live box)
   let ov=document.getElementById('overlay');ov.innerHTML='';
   if(!S)return;
   // safe-zone shading for top/bottom strips
@@ -1387,13 +1618,15 @@ function applySnap(a){
 }
 
 function crosses(a){
-  // true if the dragged element's y sits on/over a divider line or past an edge
-  let r=boxRect(a),ty=topLineY(),by=botLineY();
-  if(r.y<=0||r.x<=0||r.x>=S.screen.width||r.y>=S.screen.height)return true;
-  // crossing a divider line vertically
-  let yTop=r.y,yBot=r.y+(a.length>=4?r.h:10);
-  if(yTop<=ty&&yBot>=ty)return true;
-  if(yTop<=by&&yBot>=by)return true;
+  // warn only on a real problem: pushed off a screen edge, or a box clearly
+  // straddling a divider line (center on the far side), not merely touching a
+  // line it legitimately sits against.
+  let r=boxRect(a),ty=topLineY(),by=botLineY(),W=S.screen.width,H=S.screen.height;
+  if(r.x<0||r.y<0||r.x+r.w>W||r.y+r.h>H)return true;
+  let h=(a.length>=4?r.h:10),cy=r.y+h/2,tol=2;
+  // straddling line1: top above it AND bottom well below it
+  if(r.y<ty-tol && (r.y+h)>ty+tol)return true;
+  if(r.y<by-tol && (r.y+h)>by+tol)return true;
   if(warnOverlap){
     for(let [n,e] of Object.entries(S.elements)){
       if(n===drag.n)continue;let oxy=e.properties.xy;if(!oxy)continue;
@@ -1406,7 +1639,8 @@ function crosses(a){
 }
 
 function liveBox(a){
-  let b=document.querySelector('.box[data-name="'+(drag&&drag.n?drag.n.replace(/"/g,'\"'):'')+'"]');
+  if(!drag)return;
+  let b=[...document.querySelectorAll('.box')].find(x=>x.dataset.name===drag.n);
   if(!b)return;
   let r=boxRect(a);
   b.style.left=(r.x/S.screen.width*100)+'%';b.style.top=(r.y/S.screen.height*100)+'%';
@@ -1414,12 +1648,16 @@ function liveBox(a){
 }
 
 function startDrag(ev,n,xy){
-  selected=n;renderList();renderEditor();drawBoxes();
+  ev.preventDefault();
+  selected=n;renderList();renderEditor();
+  // mark the current box selected WITHOUT rebuilding the overlay (rebuilding
+  // would detach the element being dragged and kill the drag).
+  document.querySelectorAll('.box').forEach(b=>b.classList.toggle('sel',b.dataset.name===n));
   let frame=document.getElementById('frame').getBoundingClientRect();
   drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};
-  let b=document.querySelector('.box[data-name="'+n.replace(/"/g,'\"')+'"]');
-  if(b){ev.target.setPointerCapture?ev.target.setPointerCapture(ev.pointerId):0}
-  ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag
+  let el=ev.currentTarget||ev.target;
+  try{el.setPointerCapture(ev.pointerId)}catch(e){}
+  el.onpointermove=moveDrag;el.onpointerup=endDrag;el.onpointercancel=endDrag
 }
 
 function moveDrag(ev){
@@ -1434,7 +1672,7 @@ function moveDrag(ev){
   liveBox(a)   // Feature 1: box follows cursor live
 }
 
-function endDrag(ev){if(!drag)return;drag=null;apply()}
+function endDrag(ev){if(!drag)return;drag=null;document.querySelectorAll('.box.warn').forEach(b=>b.classList.remove('warn'));apply()}
 
 // --- Feature: arrow-key nudge ---
 window.addEventListener('keydown',ev=>{
@@ -1452,9 +1690,9 @@ window.addEventListener('keydown',ev=>{
 });
 
 window.addEventListener('resize',scale);
-document.getElementById('preview').onload=()=>{scale();drawBoxes()};
+document.getElementById('preview').onload=()=>{if(drag)return;scale();drawBoxes()};
 refresh();
-setInterval(()=>reloadPreview(),7000);
+setInterval(()=>{if(!drag)reloadPreview()},7000);
 </script></body></html>
 """
 
