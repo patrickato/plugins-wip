@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.0-alpha4
+
+Editor UX upgrade pass (see `EDITOR_UPGRADES.md`). Makes positioning feel like a
+real design tool while keeping everything one-click and fully undoable.
+
+### Added
+
+- **Real-time drag** — the overlay box follows the cursor during a drag (commit
+  still on release), instead of jumping only when you let go.
+- **Arrow-key nudge** — selected element moves 1px per arrow key, 10px with
+  Shift.
+- **Border/overlap warning** — the dragged box turns red when it crosses a
+  divider line (`line1`/`line2`) or the screen edge; a warning, not a block
+  (element-overlap warning available behind a flag).
+- **Auto-align strips** — `Align`/`Distribute` buttons for the top and bottom
+  status strips. Strip membership is auto-detected from the divider lines; a new
+  `api/align` endpoint computes positions server-side and applies them as one
+  undoable transaction. Align = shared median baseline; distribute = even gaps.
+- **Snap-to-guides** (`Snap` toggle, default on) — dragging snaps to the divider
+  lines and screen edges within 3px.
+- **Safe-zone overlay** (`Zones` toggle, default on) — faintly shades the top and
+  bottom strips.
+- **Element name labels** on the preview boxes, and a "moved from default"
+  indicator in the element list, the title, and the box border.
+
+### Tests
+
+- 68 unit (was 61) + 16 integration, all green; `api/align` covered by unit
+  tests and a real-framework check; `node --check` clean on both JS copies.
+
 ## 0.1.0-alpha3
 
 First on-hardware validation pass (Pi 4 + 480x320 ILI9486, Jayofelony

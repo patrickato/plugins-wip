@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha3"
+    __version__ = "0.1.0-alpha4"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
@@ -1011,10 +1011,126 @@ class TweakViewNG(plugins.Plugin):
             result = self._apply_profile(redraw=True)
             self._save()
             return jsonify({"ok": True, "result": result})
+        if path == "api/align" and request.method == "POST":
+            return self._align_strip(request)
         if path == "api/recovery/update" and request.method == "POST":
             return self._recovery_update(request)
         # Unknown mutating route - a clean 404, not a rolled-back edit.
         raise _HttpResult((jsonify({"ok": False, "error": "not found"}), 404))
+
+    # ------------------------------------------------------------------ #
+    # Auto-align the top / bottom status strips (editor convenience)
+    # ------------------------------------------------------------------ #
+    def _xy_of(self, props):
+        """Return (x, y, extra) from a serialized xy, or None. extra is the
+        remaining coords for 4-point widgets (so width is preserved on move)."""
+        xy = props.get("xy")
+        if xy is None:
+            return None
+        if isinstance(xy, str):
+            parts = [int(float(p)) for p in xy.split(",") if p.strip() != ""]
+        elif isinstance(xy, (list, tuple)):
+            try:
+                parts = [int(float(p)) for p in xy]
+            except Exception:
+                return None
+        else:
+            return None
+        if len(parts) < 2:
+            return None
+        return parts[0], parts[1], parts[2:]
+
+    def _strip_members(self, snap):
+        """Partition editable text-like elements into top/bottom strips by the
+        divider lines (line1/line2), falling back to screen fractions. Only
+        elements that expose an xy and are not the divider lines themselves."""
+        w = snap["screen"]["width"]
+        h = snap["screen"]["height"]
+        els = snap["elements"]
+
+        def _line_y(name, default):
+            e = els.get(name)
+            if not e:
+                return default
+            got = self._xy_of(e.get("properties", {}))
+            return got[1] if got else default
+
+        top_y = _line_y("line1", int(h * 0.12))
+        bot_y = _line_y("line2", int(h * 0.88))
+        top, bottom = [], []
+        for name, e in els.items():
+            if name in ("line1", "line2"):
+                continue
+            got = self._xy_of(e.get("properties", {}))
+            if not got:
+                continue
+            x, y, _extra = got
+            if y < top_y:
+                top.append((name, x, y, got))
+            elif y > bot_y:
+                bottom.append((name, x, y, got))
+        return top, bottom, w, h
+
+    def _align_strip(self, request):
+        """Align (shared baseline) or distribute (even gaps) the elements in the
+        top or bottom status strip, as one undoable transaction.
+
+        Body: {"strip": "top"|"bottom", "op": "align"|"distribute"}.
+        Baseline = median y of the strip (least total movement). Distribute =
+        equal gaps between the leftmost and rightmost element's x positions.
+        """
+        data = self._json_body(request)
+        strip = str(data.get("strip", "")).strip()
+        op = str(data.get("op", "")).strip()
+        if strip not in ("top", "bottom") or op not in ("align", "distribute"):
+            raise _HttpResult((jsonify({"ok": False, "error": "strip must be top/bottom, op must be align/distribute"}), 400))
+        snap = self._adapter.snapshot()
+        top, bottom, _w, _h = self._strip_members(snap)
+        members = top if strip == "top" else bottom
+        if len(members) < 2:
+            raise _HttpResult((jsonify({"ok": False, "error": "need at least 2 elements in the %s strip" % strip}), 409))
+
+        # Compute new positions.
+        new_xy = {}
+        if op == "align":
+            ys = sorted(m[2] for m in members)
+            mid = len(ys) // 2
+            target_y = ys[mid] if len(ys) % 2 else (ys[mid - 1] + ys[mid]) // 2
+            for name, x, _y, got in members:
+                extra = got[2]
+                if len(extra) >= 2:  # 4-point widget: shift y, keep height
+                    dy = target_y - _y
+                    new_xy[name] = [x, target_y, extra[0], extra[1] + dy]
+                else:
+                    new_xy[name] = [x, target_y]
+        else:  # distribute
+            ordered = sorted(members, key=lambda m: m[1])
+            x_first, x_last = ordered[0][1], ordered[-1][1]
+            n = len(ordered)
+            span = x_last - x_first
+            for i, (name, x, y, got) in enumerate(ordered):
+                nx = x_first if n == 1 else int(round(x_first + span * i / (n - 1)))
+                extra = got[2]
+                if extra and len(extra) >= 2:
+                    dx = nx - x
+                    new_xy[name] = [nx, y, extra[0] + dx, extra[1]]
+                else:
+                    new_xy[name] = [nx, y]
+
+        # Apply as one transaction (runs inside _mutating_route -> rollback-safe).
+        self._push_history()
+        profile = self._profile()
+        changed = []
+        for name, xy in new_xy.items():
+            profile.setdefault("edits", {}).setdefault(name, {})["xy"] = xy
+            try:
+                self._adapter.apply_properties(name, {"xy": xy}, self._originals)
+                changed.append(name)
+            except Exception as exc:
+                LOG.warning("Tweak View NG: align failed for %s: %s", name, exc)
+        self._save()
+        self._adapter.redraw()
+        return jsonify({"ok": True, "strip": strip, "op": op, "changed": sorted(changed)})
 
     # ------------------------------------------------------------------ #
     # Minimal server-rendered recovery editor (harvest item 8)
@@ -1113,9 +1229,233 @@ class TweakViewNG(plugins.Plugin):
 
 WEB_UI = r"""
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="csrf_token" content="{{ csrf_token() }}"><title>Tweak View NG</title>
-<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}</style></head>
-<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
-<script>const CSRF=document.querySelector('meta[name=csrf_token]').content;let S=null,selected=null,drag=null;const api=async(path,method='GET',body=null)=>{let o={method,headers:{'X-CSRFToken':CSRF}};if(body!==null){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}let r=await fetch('/plugins/tweak_view_ng/'+path,o);let ct=r.headers.get('content-type')||'';if(!ct.includes('application/json')){let t=await r.text();if(r.status===400&&/csrf/i.test(t))throw Error('Session expired \u2014 reload the page (Ctrl-Shift-R) and try again.');if(r.status===401||r.status===403)throw Error('Not authorized \u2014 reload the page and sign in again.');throw Error('Server returned a non-JSON '+r.status+' response \u2014 try reloading the page.')}let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j};function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}async function refresh(){try{S=await api('api/state');document.getElementById('screen').textContent=`${S.screen.width}×${S.screen.height} • Pwn ${S.pwnagotchi_version}`;renderList();renderEditor();renderProfiles();scale();msg(`undo ${S.history.undo} • redo ${S.history.redo}${S.pending_missing.length?' • pending '+S.pending_missing.join(', '):''}`)}catch(e){msg(e.message,true)}}function renderList(){if(!S)return;let q=document.getElementById('search').value.toLowerCase(),ul=document.getElementById('elements');ul.innerHTML='';Object.entries(S.elements).filter(([n])=>n.toLowerCase().includes(q)).forEach(([n,e])=>{let li=document.createElement('li');li.className='el'+(n===selected?' sel':'');li.innerHTML=`<b>${esc(n)}</b><span class=type>${esc(e.type)}</span>`;li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};ul.appendChild(li)})}function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}function renderEditor(){let ed=document.getElementById('editor'),t=document.getElementById('title');ed.innerHTML='';if(!S||!selected||!S.elements[selected]){t.textContent='Select an element';return}let e=S.elements[selected];t.textContent=selected+' · '+e.type;e.editable.forEach(k=>{let v=e.properties[k],row=document.createElement('div');row.className='row';let label=document.createElement('label');label.textContent=k;let input;if(['font','text_font','label_font','alt_font'].includes(k)){input=document.createElement('select');S.fonts.forEach(f=>{let o=document.createElement('option');o.value=f;o.textContent=f;if(f===v)o.selected=true;input.appendChild(o)})}else if(k==='wrap'){input=document.createElement('input');input.type='checkbox';input.checked=!!v}else{input=document.createElement('input');input.value=Array.isArray(v)?v.join(','):v??'';if(k==='xy')input.dataset.xy='1'}input.id='p_'+k;row.append(label,input);ed.appendChild(row)})}function readProps(){let e=S.elements[selected],p={};e.editable.forEach(k=>{let i=document.getElementById('p_'+k);if(!i)return;p[k]=k==='wrap'?i.checked:i.value});return p}async function apply(){if(!selected)return;try{await api('api/update','POST',{element:selected,properties:readProps()});await refresh();reloadPreview();msg('applied ✓')}catch(e){msg(e.message,true)}}async function revertEl(){if(!selected)return;try{await api('api/revert','POST',{element:selected});await refresh();reloadPreview();msg('reverted ✓')}catch(e){msg(e.message,true)}}async function resetAll(){if(!confirm('Reset the active profile?'))return;try{await api('api/reset','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}async function undo(){try{await api('api/undo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}function renderProfiles(){let s=document.getElementById('profile');s.innerHTML='';S.profiles.forEach(n=>{let o=document.createElement('option');o.value=n;o.textContent=n;o.selected=n===S.active_profile;s.appendChild(o)});s.onchange=()=>api('api/profile','POST',{name:s.value}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}function newProfile(){let n=prompt('New profile name');if(!n)return;api('api/profile','POST',{name:n}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}async function exportCfg(){let d=await api('api/export');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));a.download='tweak_view_ng.json';a.click();URL.revokeObjectURL(a.href)}function importCfg(inp){let f=inp.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);api('api/import','POST',d).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}catch(e){msg('invalid JSON',true)}};r.readAsText(f)}function reloadPreview(){let im=document.getElementById('preview');im.src='/ui?t='+Date.now()}function scale(){if(!S)return;let im=document.getElementById('preview'),frame=document.getElementById('frame'),maxW=Math.max(250,document.querySelector('.stage').clientWidth-40),maxH=Math.max(150,document.querySelector('.stage').clientHeight-40),sc=Math.min(maxW/S.screen.width,maxH/S.screen.height,4);if(window.innerWidth<850)sc=Math.min((window.innerWidth-38)/S.screen.width,3);sc=Math.max(.5,sc);frame.style.width=(S.screen.width*sc)+'px';frame.style.height=(S.screen.height*sc)+'px';im.style.width='100%';im.style.height='100%';drawBoxes()}function drawBoxes(){let ov=document.getElementById('overlay');ov.innerHTML='';if(!S)return;Object.entries(S.elements).forEach(([n,e])=>{let xy=e.properties.xy;if(!xy)return;if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;let b=document.createElement('div');b.className='box'+(n===selected?' sel':'');b.style.left=(x/S.screen.width*100)+'%';b.style.top=(y/S.screen.height*100)+'%';b.style.width=(w/S.screen.width*100)+'%';b.style.height=(h/S.screen.height*100)+'%';b.title=n;b.onpointerdown=ev=>startDrag(ev,n,xy);b.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};ov.appendChild(b)})}function startDrag(ev,n,xy){selected=n;renderList();renderEditor();let frame=document.getElementById('frame').getBoundingClientRect();drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};ev.target.setPointerCapture(ev.pointerId);ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag}function moveDrag(ev){if(!drag)return;let dx=Math.round((ev.clientX-drag.sx)*S.screen.width/drag.fw),dy=Math.round((ev.clientY-drag.sy)*S.screen.height/drag.fh),a=[...drag.xy];a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}let i=document.getElementById('p_xy');if(i)i.value=a.join(',')}function endDrag(ev){if(!drag)return;drag=null;apply()}window.addEventListener('resize',scale);document.getElementById('preview').onload=()=>{scale();drawBoxes()};refresh();setInterval(()=>reloadPreview(),7000);</script></body></html>
+<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important}
+.box.edited{border-color:var(--a)}
+.blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10cc;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.zone{position:absolute;background:repeating-linear-gradient(45deg,#5bd1ff0f,#5bd1ff0f 6px,transparent 6px,transparent 12px);pointer-events:none;border-top:1px dashed #5bd1ff44;border-bottom:1px dashed #5bd1ff44}
+.dot{color:var(--a);font-size:9px;margin-left:4px;vertical-align:middle}
+button.on{border-color:var(--a);background:#101a20;color:var(--a)}
+.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0}
+.align-grid button{font-size:12px;padding:6px}
+.hint{color:var(--dim);font-size:11px;margin:4px 0 2px}
+</style></head>
+<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Auto-align strips</div><div class="align-grid"><button onclick="alignStrip('top','align')">Align top</button><button onclick="alignStrip('top','distribute')">Distribute top</button><button onclick="alignStrip('bottom','align')">Align bottom</button><button onclick="alignStrip('bottom','distribute')">Distribute bottom</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
+<script>const CSRF=document.querySelector('meta[name=csrf_token]').content;
+let S=null,selected=null,drag=null;
+let snap=true, overlayZones=true, warnOverlap=false;
+
+const api=async(path,method='GET',body=null)=>{
+  let o={method,headers:{'X-CSRFToken':CSRF}};
+  if(body!==null){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}
+  let r=await fetch('/plugins/tweak_view_ng/'+path,o);
+  let ct=r.headers.get('content-type')||'';
+  if(!ct.includes('application/json')){
+    let t=await r.text();
+    if(r.status===400&&/csrf/i.test(t))throw Error('Session expired — reload the page (Ctrl-Shift-R) and try again.');
+    if(r.status===401||r.status===403)throw Error('Not authorized — reload the page and sign in again.');
+    throw Error('Server returned a non-JSON '+r.status+' response — try reloading the page.')
+  }
+  let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j
+};
+
+function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}
+
+async function refresh(){
+  try{
+    S=await api('api/state');
+    document.getElementById('screen').textContent=`${S.screen.width}×${S.screen.height} • Pwn ${S.pwnagotchi_version}`;
+    renderList();renderEditor();renderProfiles();scale();
+    msg(`undo ${S.history.undo} • redo ${S.history.redo}${S.pending_missing.length?' • pending '+S.pending_missing.join(', '):''}`)
+  }catch(e){msg(e.message,true)}
+}
+
+// --- helpers for strip membership + "moved from default" ---
+function lineY(name){let e=S&&S.elements[name];if(!e)return null;let xy=e.properties.xy;if(!xy)return null;if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);return xy[1]}
+function topLineY(){let y=lineY('line1');return y==null?Math.round(S.screen.height*0.12):y}
+function botLineY(){let y=lineY('line2');return y==null?Math.round(S.screen.height*0.88):y}
+function isEdited(n){return S&&S.configured&&S.configured.edits&&(n in S.configured.edits)}
+
+function renderList(){
+  if(!S)return;
+  let q=document.getElementById('search').value.toLowerCase(),ul=document.getElementById('elements');
+  ul.innerHTML='';
+  Object.entries(S.elements).filter(([n])=>n.toLowerCase().includes(q)).forEach(([n,e])=>{
+    let li=document.createElement('li');
+    li.className='el'+(n===selected?' sel':'');
+    li.innerHTML=`<b>${esc(n)}</b>${isEdited(n)?'<span class=dot title="moved from default">●</span>':''}<span class=type>${esc(e.type)}</span>`;
+    li.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
+    ul.appendChild(li)
+  })
+}
+
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+function renderEditor(){
+  let ed=document.getElementById('editor'),t=document.getElementById('title');
+  ed.innerHTML='';
+  if(!S||!selected||!S.elements[selected]){t.textContent='Select an element';return}
+  let e=S.elements[selected];
+  t.innerHTML=esc(selected)+' · '+esc(e.type)+(isEdited(selected)?' <span class=dot title="moved from default">●</span>':'');
+  e.editable.forEach(k=>{
+    let v=e.properties[k],row=document.createElement('div');row.className='row';
+    let label=document.createElement('label');label.textContent=k;
+    let input;
+    if(['font','text_font','label_font','alt_font'].includes(k)){
+      input=document.createElement('select');
+      S.fonts.forEach(f=>{let o=document.createElement('option');o.value=f;o.textContent=f;if(f===v)o.selected=true;input.appendChild(o)})
+    }else if(k==='wrap'){input=document.createElement('input');input.type='checkbox';input.checked=!!v}
+    else{input=document.createElement('input');input.value=Array.isArray(v)?v.join(','):v??'';if(k==='xy')input.dataset.xy='1'}
+    input.id='p_'+k;row.append(label,input);ed.appendChild(row)
+  })
+}
+
+function readProps(){let e=S.elements[selected],p={};e.editable.forEach(k=>{let i=document.getElementById('p_'+k);if(!i)return;p[k]=k==='wrap'?i.checked:i.value});return p}
+
+async function apply(){if(!selected)return;try{await api('api/update','POST',{element:selected,properties:readProps()});await refresh();reloadPreview();msg('applied ✓')}catch(e){msg(e.message,true)}}
+async function revertEl(){if(!selected)return;try{await api('api/revert','POST',{element:selected});await refresh();reloadPreview();msg('reverted ✓')}catch(e){msg(e.message,true)}}
+async function resetAll(){if(!confirm('Reset the active profile?'))return;try{await api('api/reset','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
+async function undo(){try{await api('api/undo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
+async function redo(){try{await api('api/redo','POST',{});await refresh();reloadPreview()}catch(e){msg(e.message,true)}}
+function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
+
+// --- auto-align (server does the math) ---
+async function alignStrip(strip,op){try{await api('api/align','POST',{strip,op});await refresh();reloadPreview();msg(op+' '+strip+' ✓')}catch(e){msg(e.message,true)}}
+
+function renderProfiles(){
+  let s=document.getElementById('profile');s.innerHTML='';
+  S.profiles.forEach(n=>{let o=document.createElement('option');o.value=n;o.textContent=n;o.selected=n===S.active_profile;s.appendChild(o)});
+  s.onchange=()=>api('api/profile','POST',{name:s.value}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))
+}
+function newProfile(){let n=prompt('New profile name');if(!n)return;api('api/profile','POST',{name:n}).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
+async function exportCfg(){let d=await api('api/export');let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:'application/json'}));a.download='tweak_view_ng.json';a.click();URL.revokeObjectURL(a.href)}
+function importCfg(inp){let f=inp.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{try{let d=JSON.parse(r.result);api('api/import','POST',d).then(()=>{selected=null;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}catch(e){msg('invalid JSON',true)}};r.readAsText(f)}
+function reloadPreview(){let im=document.getElementById('preview');im.src='/ui?t='+Date.now()}
+
+function toggleSnap(){snap=!snap;document.getElementById('snapBtn').classList.toggle('on',snap);msg('snap '+(snap?'on':'off'))}
+function toggleZones(){overlayZones=!overlayZones;document.getElementById('zoneBtn').classList.toggle('on',overlayZones);drawBoxes()}
+
+function scale(){
+  if(!S)return;
+  let im=document.getElementById('preview'),frame=document.getElementById('frame'),
+    maxW=Math.max(250,document.querySelector('.stage').clientWidth-40),
+    maxH=Math.max(150,document.querySelector('.stage').clientHeight-40),
+    sc=Math.min(maxW/S.screen.width,maxH/S.screen.height,4);
+  if(window.innerWidth<850)sc=Math.min((window.innerWidth-38)/S.screen.width,3);
+  sc=Math.max(.5,sc);
+  frame.style.width=(S.screen.width*sc)+'px';frame.style.height=(S.screen.height*sc)+'px';
+  im.style.width='100%';im.style.height='100%';
+  drawBoxes()
+}
+
+function boxRect(xy){let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;return {x,y,w,h}}
+
+function drawBoxes(){
+  let ov=document.getElementById('overlay');ov.innerHTML='';
+  if(!S)return;
+  // safe-zone shading for top/bottom strips
+  if(overlayZones){
+    let ty=topLineY(),by=botLineY();
+    let zt=document.createElement('div');zt.className='zone';zt.style.left='0';zt.style.top='0';zt.style.width='100%';zt.style.height=(ty/S.screen.height*100)+'%';ov.appendChild(zt);
+    let zb=document.createElement('div');zb.className='zone';zb.style.left='0';zb.style.top=(by/S.screen.height*100)+'%';zb.style.width='100%';zb.style.height=((S.screen.height-by)/S.screen.height*100)+'%';ov.appendChild(zb)
+  }
+  Object.entries(S.elements).forEach(([n,e])=>{
+    let xy=e.properties.xy;if(!xy)return;
+    if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);
+    let r=boxRect(xy);
+    let b=document.createElement('div');
+    b.className='box'+(n===selected?' sel':'')+(isEdited(n)?' edited':'');
+    b.style.left=(r.x/S.screen.width*100)+'%';b.style.top=(r.y/S.screen.height*100)+'%';
+    b.style.width=(r.w/S.screen.width*100)+'%';b.style.height=(r.h/S.screen.height*100)+'%';
+    b.title=n;
+    let lbl=document.createElement('span');lbl.className='blabel';lbl.textContent=n;b.appendChild(lbl);
+    b.onpointerdown=ev=>startDrag(ev,n,xy);
+    b.onclick=()=>{selected=n;renderList();renderEditor();drawBoxes()};
+    b.dataset.name=n;
+    ov.appendChild(b)
+  })
+}
+
+function applySnap(a){
+  if(!snap)return a;
+  let th=3;
+  let edges=[0,S.screen.width-1];let ey=[0,S.screen.height-1,topLineY(),botLineY()];
+  // snap x to screen edges
+  edges.forEach(E=>{if(Math.abs(a[0]-E)<=th)a[0]=E});
+  // snap y to edges + divider lines
+  ey.forEach(E=>{if(Math.abs(a[1]-E)<=th)a[1]=E});
+  return a
+}
+
+function crosses(a){
+  // true if the dragged element's y sits on/over a divider line or past an edge
+  let r=boxRect(a),ty=topLineY(),by=botLineY();
+  if(r.y<=0||r.x<=0||r.x>=S.screen.width||r.y>=S.screen.height)return true;
+  // crossing a divider line vertically
+  let yTop=r.y,yBot=r.y+(a.length>=4?r.h:10);
+  if(yTop<=ty&&yBot>=ty)return true;
+  if(yTop<=by&&yBot>=by)return true;
+  if(warnOverlap){
+    for(let [n,e] of Object.entries(S.elements)){
+      if(n===drag.n)continue;let oxy=e.properties.xy;if(!oxy)continue;
+      if(!Array.isArray(oxy))oxy=String(oxy).split(',').map(Number);
+      let o=boxRect(oxy);
+      if(r.x< o.x+o.w && r.x+r.w> o.x && r.y< o.y+o.h && r.y+r.h> o.y)return true
+    }
+  }
+  return false
+}
+
+function liveBox(a){
+  let b=document.querySelector('.box[data-name="'+(drag&&drag.n?drag.n.replace(/"/g,'\"'):'')+'"]');
+  if(!b)return;
+  let r=boxRect(a);
+  b.style.left=(r.x/S.screen.width*100)+'%';b.style.top=(r.y/S.screen.height*100)+'%';
+  b.classList.toggle('warn',crosses(a))
+}
+
+function startDrag(ev,n,xy){
+  selected=n;renderList();renderEditor();drawBoxes();
+  let frame=document.getElementById('frame').getBoundingClientRect();
+  drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};
+  let b=document.querySelector('.box[data-name="'+n.replace(/"/g,'\"')+'"]');
+  if(b){ev.target.setPointerCapture?ev.target.setPointerCapture(ev.pointerId):0}
+  ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag
+}
+
+function moveDrag(ev){
+  if(!drag)return;
+  let dx=Math.round((ev.clientX-drag.sx)*S.screen.width/drag.fw),
+      dy=Math.round((ev.clientY-drag.sy)*S.screen.height/drag.fh),
+      a=[...drag.xy];
+  a[0]+=dx;a[1]+=dy;if(a.length>=4){a[2]+=dx;a[3]+=dy}
+  a=applySnap(a);
+  drag.cur=a;
+  let i=document.getElementById('p_xy');if(i)i.value=a.join(',');
+  liveBox(a)   // Feature 1: box follows cursor live
+}
+
+function endDrag(ev){if(!drag)return;drag=null;apply()}
+
+// --- Feature: arrow-key nudge ---
+window.addEventListener('keydown',ev=>{
+  if(!selected||!S||!S.elements[selected])return;
+  if(['INPUT','SELECT','TEXTAREA'].includes((ev.target.tagName||'')))return;
+  let d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[ev.key];
+  if(!d)return;
+  ev.preventDefault();
+  let step=ev.shiftKey?10:1;
+  let i=document.getElementById('p_xy');if(!i)return;
+  let a=String(i.value).split(',').map(Number);
+  a[0]+=d[0]*step;a[1]+=d[1]*step;if(a.length>=4){a[2]+=d[0]*step;a[3]+=d[1]*step}
+  i.value=a.join(',');
+  apply()
+});
+
+window.addEventListener('resize',scale);
+document.getElementById('preview').onload=()=>{scale();drawBoxes()};
+refresh();
+setInterval(()=>reloadPreview(),7000);
+</script></body></html>
 """
 
 
