@@ -1,0 +1,16 @@
+--- a/pwnagotchi/agent.py
++++ b/pwnagotchi/agent.py
+@@ -113,6 +113,14 @@
+                     logging.info("waiting for monitor interface %s ...", mon_iface)
+                     time.sleep(1)
+ 
++        self._supported_channels = utils.iface_channels(mon_iface)
++        for _ in range(15):
++            if self._supported_channels:
++                break
++            logging.warning("monitor interface %s has no channels yet; retrying ...", mon_iface)
++            time.sleep(1)
++            self._supported_channels = utils.iface_channels(mon_iface)
++
+         logging.info("supported channels: %s", self._supported_channels)
+         logging.info("handshakes will be collected inside %s", self._config['bettercap']['handshakes'])
