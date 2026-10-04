@@ -164,7 +164,8 @@ function crosses(a){
 }
 
 function liveBox(a){
-  let b=document.querySelector('.box[data-name="'+(drag&&drag.n?drag.n.replace(/"/g,'\\"'):'')+'"]');
+  if(!drag)return;
+  let b=[...document.querySelectorAll('.box')].find(x=>x.dataset.name===drag.n);
   if(!b)return;
   let r=boxRect(a);
   b.style.left=(r.x/S.screen.width*100)+'%';b.style.top=(r.y/S.screen.height*100)+'%';
@@ -172,12 +173,16 @@ function liveBox(a){
 }
 
 function startDrag(ev,n,xy){
-  selected=n;renderList();renderEditor();drawBoxes();
+  ev.preventDefault();
+  selected=n;renderList();renderEditor();
+  // mark the current box selected WITHOUT rebuilding the overlay (rebuilding
+  // would detach the element being dragged and kill the drag).
+  document.querySelectorAll('.box').forEach(b=>b.classList.toggle('sel',b.dataset.name===n));
   let frame=document.getElementById('frame').getBoundingClientRect();
   drag={id:ev.pointerId,n,xy:[...xy],sx:ev.clientX,sy:ev.clientY,fw:frame.width,fh:frame.height};
-  let b=document.querySelector('.box[data-name="'+n.replace(/"/g,'\\"')+'"]');
-  if(b){ev.target.setPointerCapture?ev.target.setPointerCapture(ev.pointerId):0}
-  ev.target.onpointermove=moveDrag;ev.target.onpointerup=endDrag
+  let el=ev.currentTarget||ev.target;
+  try{el.setPointerCapture(ev.pointerId)}catch(e){}
+  el.onpointermove=moveDrag;el.onpointerup=endDrag;el.onpointercancel=endDrag
 }
 
 function moveDrag(ev){

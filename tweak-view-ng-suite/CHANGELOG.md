@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.0-alpha5
+
+Bugfix for the alpha4 editor upgrades, found in on-hardware testing.
+
+### Fixed
+
+- **Drag was dead in alpha4.** `startDrag` called `drawBoxes()`, which rebuilt
+  the overlay and detached the very element being grabbed, so pointer events
+  never fired (the browser did text-selection instead). Now it marks the box
+  selected in place without rebuilding, preventDefaults the pointerdown, and
+  captures the pointer reliably. Added `user-select:none`/`touch-action:none`
+  to boxes and `pointer-events:none` to the name labels so they can't steal the
+  drag. Real-time drag works.
+
 ## 0.1.0-alpha4
 
 Editor UX upgrade pass (see `EDITOR_UPGRADES.md`). Makes positioning feel like a

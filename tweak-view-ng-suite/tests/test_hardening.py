@@ -525,3 +525,17 @@ def test_editor_js_has_new_features():
     assert "toggleSnap" in js and "toggleZones" in js
     # safe-zone + labels
     assert "zone" in js and "blabel" in js
+
+
+def test_startdrag_does_not_rebuild_overlay():
+    """Regression: alpha4 startDrag called drawBoxes() which detached the
+    dragged element and killed dragging. startDrag must NOT call drawBoxes;
+    boxes carry user-select:none so the browser doesn't text-select instead."""
+    js = tv.WEB_UI
+    import re
+    sd = re.search(r'function startDrag\(.*?\n\}', js, re.S).group(0)
+    assert "drawBoxes()" not in sd, "startDrag must not rebuild the overlay"
+    assert "preventDefault" in sd
+    assert "setPointerCapture" in sd
+    assert "user-select:none" in js
+    assert "pointer-events:none" in js  # the name label must not steal the pointer
