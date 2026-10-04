@@ -1,0 +1,17 @@
+REM demo_hello.duck - the ONLY payload shipped with badhid-suite.
+REM
+REM It is a harmless proof-of-life: it waits for the host to settle, then
+REM types one benign echo line and presses Enter. Its entire purpose is to
+REM confirm the HID gadget + runner work end to end. It does nothing to the
+REM target beyond echoing text into whatever window has focus.
+REM
+REM Write your OWN payloads as separate .duck files in this directory, and
+REM point them only at hardware you own or are authorized to test. This suite
+REM intentionally ships no offensive payloads.
+REM
+REM Supported here: REM, STRING, STRINGLN, ENTER + named keys, modifier
+REM combos (e.g. GUI r / CTRL ALT DELETE), DELAY <ms>, DEFAULTDELAY <ms>,
+REM REPEAT <n>. See README.md.
+
+DELAY 800
+STRINGLN echo badhid demo - hello from your own lab device

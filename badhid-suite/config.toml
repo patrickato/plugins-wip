@@ -1,0 +1,114 @@
+# BadHIDNG - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly (badhid_ng.py works around this
+# itself with the module-level DEFAULTS dict + _opt()/_opt_int()/_opt_bool()
+# pattern, but the shipped block still spells everything out, matching this
+# repo's convention).
+#
+# IMPORTANT - the section name below is [main.plugins.badhid_ng], matching
+# the plugin FILE's exact basename (badhid_ng.py), NOT the class name
+# (BadHIDNG). This fork registers and looks up every plugin by the file's
+# exact basename; a section spelled differently would never load.
+#
+# WHAT THIS PLUGIN IS, so there are no surprises: a USB HID keystroke-
+# injection ("BadUSB") framework. When armed and plugged into a computer, it
+# types a payload you wrote, as if it were a keyboard. It is for testing
+# against hardware YOU OWN or are authorized to test. It ships NO offensive
+# payloads - only one harmless demo that echoes a line. Read the safety notes
+# in README.md / NOTES.md before enabling.
+#
+# THE ONE THING THE CONFIG CANNOT DO FOR YOU: a USB keyboard can't tell which
+# machine it's plugged into. The arm/disarm model and authorized_targets list
+# below control WHEN it's live and record WHAT you meant to test - they do NOT
+# and cannot restrict WHICH host gets typed into. That part is on you: only
+# plug it into your own gear.
+
+[main.plugins.badhid_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# >>> USER INPUT REQUIRED <<<
+# ---------------------------------------------------------------------
+# No working default token is shipped, on purpose. If auth_token is blank,
+# missing, an obvious placeholder (changeme/badhid/secret/... - see
+# PLACEHOLDER_TOKENS in badhid_ng.py), or shorter than 12 chars, the control
+# server logs an error and does NOT start. Generate a long random value, e.g.
+#   python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+auth_token = ""
+
+# ---------------------------------------------------------------------
+# HID device + gadget
+# ---------------------------------------------------------------------
+# The composite gadget's HID keyboard node. The plugin only WRITES to this;
+# it never creates or reconfigures the gadget (that could drop your usb0
+# link). Bring the gadget up by hand with the shipped setup_composite_gadget.sh
+# - see README.md. Until then, the UI runs but a fire will fail cleanly.
+hid_device = "/dev/hidg0"
+
+# Leave false. true is intentionally unsupported - the plugin refuses to touch
+# the live gadget and tells you to run the setup script instead.
+manage_gadget = false
+
+# ---------------------------------------------------------------------
+# Control server exposure (same semantics as web2ssh_ng / handshaker)
+# ---------------------------------------------------------------------
+#   "auto"      (default) - tailscale IP if detected, else 127.0.0.1 only
+#   "tailscale" - require a tailscale iface or refuse to start (fail-safe)
+#   "localhost" - 127.0.0.1 only
+#   "lan"       - 0.0.0.0, every interface (explicit, logged opt-in)
+# The exact URL is always logged and shown on the page.
+bind_scope = "auto"
+port = 8083
+
+# ---------------------------------------------------------------------
+# Payloads
+# ---------------------------------------------------------------------
+# Only *.duck / *.txt files in this directory are listable and fireable. The
+# suite installs exactly one file here: demo_hello.duck (harmless). Put your
+# own payloads here, and point them only at hardware you own/are authorized
+# to test.
+payloads_dir = "/etc/pwnagotchi/badhid_ng/payloads"
+
+# The payload used by the UI "fire default" button and by fire_on_enumerate.
+default_payload = "demo_hello.duck"
+
+# ---------------------------------------------------------------------
+# Arming (default: disarmed, manual-fire only)
+# ---------------------------------------------------------------------
+# How long an armed window lasts before auto-disarm (0 = until you disarm, or
+# until one fire if arm_one_shot is true).
+arm_window_seconds = 120
+# If true (default), the first successful fire disarms again.
+arm_one_shot = true
+# If true AND armed, fire default_payload as soon as a host enumerates the
+# gadget. Default false = manual fire only. This is the "fires when plugged
+# in" behavior; it's off unless you deliberately enable it AND arm.
+fire_on_enumerate = false
+
+# ---------------------------------------------------------------------
+# Advisory audit list (NOT a technical restriction - see header)
+# ---------------------------------------------------------------------
+# Free-text labels/hostnames/BSSIDs of what you intend to test. EMPTY by
+# default. Logged on every fire as a record of intent. It does not and cannot
+# stop the device typing into some other host - verify by hand what you plug
+# into.
+authorized_targets = []
+
+# ---------------------------------------------------------------------
+# Typing timing / limits
+# ---------------------------------------------------------------------
+# Delay between individual keystrokes (ms) so fast hosts don't drop keys.
+inter_key_delay_ms = 5
+# Implicit delay between payload lines (ms). DEFAULTDELAY in a payload overrides.
+default_delay_ms = 0
+# Hard cap on parsed actions per payload, so a runaway file can't type forever.
+max_actions = 20000
+
+# ---------------------------------------------------------------------
+# On-screen status (optional; monochrome-safe for the TFT)
+# ---------------------------------------------------------------------
+ui_enabled = true
+# Negative x = that many px in from the right edge (repo convention).
+ui_position_x = -55
+ui_position_y = 10
