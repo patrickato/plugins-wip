@@ -42,7 +42,7 @@ already there.
   cap. On a long-running device this both grows without bound and
   gets slower over time as the read-modify-rewrite cycle scales with
   file size.
-- **No bare-MAC-string handling.** Like `WifiJammerNG` found earlier
+- **No bare-MAC-string handling.** Like `WifiJtest` found earlier
   in this audit, `on_handshake`'s `access_point` argument can be a
   plain MAC string instead of a full AP dict, in the
   "couldn't match the session" branch of `pwnagotchi/agent.py`. The

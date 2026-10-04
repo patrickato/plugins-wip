@@ -36,7 +36,7 @@ blemon_plugin.py:
   4. `__dependencies__ = {"pip": ["scapy"]}` but the file never imports
      `scapy` anywhere - the BLE recon calls only ever go through
      bettercap's own API via `agent.run(...)`, exactly like this
-     project's wifi_jammer_ng.py and gps_tagger_ng.py already do for
+     project's wifiJtest.py (now in patrickato/test-plugins) and gps_tagger_ng.py already do for
      their own bettercap calls. No extra pip package is required.
 
 bluetoothsniffer.py:

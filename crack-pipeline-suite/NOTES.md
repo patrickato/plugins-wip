@@ -61,7 +61,7 @@ network's password.
 
 **The fix, applied in this merge:** the exact same `authorized_networks`
 allowlist (same name, same semantics, same empty-by-default behavior as
-`wifi-jammer-suite`'s `wifi_jammer_ng.py` in this repo) gates every actual
+`wifiJtest` (in patrickato/test-plugins)'s `wifiJtest.py` in this repo) gates every actual
 hashcat invocation in the merged pipeline - the plain wordlist pass AND the
 rule-based mutation pass, with no exceptions and no "but this part is just
 local file processing" carve-out anywhere in the code. An empty
@@ -90,7 +90,7 @@ ssid = (access_point or {}).get('hostname', '') or ''
 This fork's `agent.py` can call `on_handshake` with a bare MAC string
 instead of a full dict for `access_point` when it can't match the AP in the
 live bettercap session at that exact moment (same confirmed behavior
-`wifi-jammer-suite`'s `wifi_jammer_ng.py` already documents and handles via
+`wifiJtest` (in patrickato/test-plugins)'s `wifiJtest.py` already documents and handles via
 its own `_as_ap_dict()`). `(access_point or {})` only protects against
 `access_point` being `None` or falsy - a non-empty bare string is still
 truthy, so `.get()` is called directly on a `str`, raising `AttributeError`
@@ -99,7 +99,7 @@ and silently dropping the handshake entirely (the whole `_process`/
 per-plugin event-queue worker, which just logs and moves on).
 
 **Fixed** with this plugin's own `_as_ap_dict()`, directly modeled on
-`wifi_jammer_ng.py`'s version, applied to every single AP-argument read in
+`wifiJtest.py`'s version, applied to every single AP-argument read in
 this merged plugin (classification, allowlist matching, path building).
 Tested directly (`_as_ap_dict` unit tests, plus an end-to-end
 `on_handshake` call with a bare-string AP confirming no crash and correct
@@ -196,7 +196,7 @@ None of the four originals could reload their allowlist (`whitelist` /
 
 **Fixed**: `on_config_changed(self, config)` calls the same
 `_load_targets()` helper `on_loaded` uses, exactly matching
-`wifi_jammer_ng.py`'s own pattern. Tested directly: a target added to
+`wifiJtest.py`'s own pattern. Tested directly: a target added to
 `authorized_networks` after load, followed by `on_config_changed`, is
 picked up without restarting anything.
 
@@ -243,7 +243,7 @@ merge.
 
 **Fixed**: unified under one set of option names across the merged plugin,
 with `authorized_networks` as the canonical allowlist name - matching
-`wifi_jammer_ng.py`, so this repo now has exactly one name for "the
+`wifiJtest.py`, so this repo now has exactly one name for "the
 allowlist of networks a plugin is allowed to act on" (see
 `CONVENTIONS.md`'s new "The `authorized_networks` allowlist" section, added
 as part of this merge). `wordlist_folder` defaults to
@@ -456,4 +456,4 @@ and the "currently processing" line.
   above) that has not been observed against a real live bettercap session
   producing that exact AP shape for a WPA network - only confirmed against
   this fork's documented/established behavior for that shape
-  (`wifi_jammer_ng.py`'s own `_as_ap_dict` docstring and `NOTES.md`).
+  (`wifiJtest.py`'s own `_as_ap_dict` docstring and `NOTES.md`).

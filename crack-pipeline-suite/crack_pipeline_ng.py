@@ -40,7 +40,7 @@ unauthorized password-cracking attempt against other people's
 networks, regardless of whether it ever touches the radio directly.
 
 In this merged plugin, the SAME `authorized_networks` allowlist (the
-same name/semantics as wifi_jammer_ng.py's own allowlist in this repo)
+same name/semantics as wifiJtest.py's allowlist (now in patrickato/test-plugins))
 gates every actual hashcat invocation - plain pass AND rule pass -
 full stop, no exceptions, no "but this part is just local file
 processing" carve-out. An empty `authorized_networks` list (the
@@ -69,7 +69,7 @@ Pipeline (per captured handshake, on_handshake)
      - WPA/WPA2/PMKID/anything else -> proceed to step 2.
 2. Allowlist gate: check the AP's SSID/BSSID against
    `authorized_networks` (empty by default = total inaction past this
-   point, same semantics as wifi_jammer_ng.py). Not authorized -> log
+   point, same semantics as wifiJtest.py). Not authorized -> log
    at INFO that this SSID was classified as crackable but is not
    authorized, write a `.route` sidecar noting this, stop. Authorized
    -> enqueue a job on the internal work queue and return immediately
@@ -105,7 +105,7 @@ full per-original breakdown)
    called `.get()` directly on `access_point`, which raises
    AttributeError and silently drops the handshake if a bare-string AP
    ever comes through (confirmed real behavior of this fork's
-   agent.py - see wifi_jammer_ng.py's own `_as_ap_dict`). Fixed with
+   agent.py - see wifiJtest.py's own `_as_ap_dict`). Fixed with
    this plugin's own `_as_ap_dict()`.
 2. Untrusted-SSID-into-filesystem-path risk (RuleMutationCrack,
    best_quickdic built `os.path.join(export_dir, f"{ssid}_...")`
@@ -131,7 +131,7 @@ full per-original breakdown)
    `position_y` (plain ints).
 5. None of the four had `on_config_changed`. Added here, reloading
    `authorized_networks` without a full plugin/process restart -
-   exactly like wifi_jammer_ng.py.
+   exactly like wifiJtest.py.
 6. Resource contention: each original spun up its own
    `threading.Thread` per handshake and/or its own separate
    `threading.Lock` - multiple concurrent hashcat/hcxpcapngtool
@@ -147,7 +147,7 @@ full per-original breakdown)
    different option names for the same allowlist concept - `whitelist`,
    `targets`, and no concept at all in two of them). Unified under one
    set of option names, `authorized_networks` as the canonical
-   allowlist name (matching wifi_jammer_ng.py - see CONVENTIONS.md's
+   allowlist name (matching wifiJtest.py - see CONVENTIONS.md's
    new "authorized_networks allowlist" section).
 
 ====================================================================
@@ -207,7 +207,7 @@ from pwnagotchi.ui.view import BLACK
 LOG = "[CrackPipelineNG]"
 ELEMENT_NAME = "crack_pipeline_ng"
 
-# Same MAC-matching approach as wifi_jammer_ng.py: a module-level
+# Same MAC-matching approach as wifiJtest.py: a module-level
 # regex, uppercase-normalized BSSID set, lowercase-normalized SSID set.
 _MAC_RE = re.compile(r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$")
 
@@ -215,7 +215,7 @@ _MAC_RE = re.compile(r"^[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}$")
 # self.options - every option is read through _opt() against this dict.
 DEFAULTS = {
     # The allowlist is the real safety gate, not this flag - matching
-    # wifi_jammer_ng.py's own convention (enabled defaults true there
+    # wifiJtest.py's own convention (enabled defaults true there
     # too, since an empty authorized_networks already means inaction).
     "enabled": True,
     # Empty by default = total inaction past classification, for every
@@ -260,7 +260,7 @@ def _as_ap_dict(ap):
     bare MAC string (this fork's agent.py falls back to bare MAC
     strings for on_handshake when it can't match the AP in the live
     bettercap session at that exact moment - same shape
-    wifi_jammer_ng.py's own _as_ap_dict normalizes for). All four
+    wifiJtest.py's own _as_ap_dict normalizes for). All four
     original plugins being merged here called .get() directly on
     access_point with no such normalization - a real, confirmed crash
     risk this merge fixes for every classification/matching path."""
@@ -381,7 +381,7 @@ class CrackPipelineNG(plugins.Plugin):
         """(Re)build the authorized-target lookup sets from config.
         Called from on_loaded and again from on_config_changed, so a
         config edit + reload takes effect without a full plugin/process
-        restart - same as wifi_jammer_ng.py."""
+        restart - same as wifiJtest.py."""
         authorized_macs = set()
         authorized_ssids = set()
         for entry in self._opt("authorized_networks") or []:

@@ -33,7 +33,7 @@ pwnagotchi image.
 2. **Missing bare-MAC-string handling.** `on_handshake` can be called
    with a plain MAC string instead of a full AP dict
    (`pwnagotchi/agent.py`'s "couldn't match the session" branch,
-   confirmed the same way this was found and fixed in `WifiJammerNG`
+   confirmed the same way this was found and fixed in `WifiJtest`
    earlier in this audit) - the original would have crashed trying to
    read a network name off a bare string. Fixed with the same
    `_as_ap_dict`-style normalizer.
