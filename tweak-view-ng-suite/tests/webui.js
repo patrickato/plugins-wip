@@ -77,7 +77,7 @@ async function redo(){try{await api('api/redo','POST',{});await refresh();reload
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
 // --- auto-align (server does the math) ---
-async function alignStrip(strip,op){try{await api('api/align','POST',{strip,op});await refresh();reloadPreview();msg(op+' '+strip+' ✓')}catch(e){msg(e.message,true)}}
+async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';
@@ -117,6 +117,13 @@ function drawBoxes(){
     let zb=document.createElement('div');zb.className='zone';zb.style.left='0';zb.style.top=(by/S.screen.height*100)+'%';zb.style.width='100%';zb.style.height=((S.screen.height-by)/S.screen.height*100)+'%';ov.appendChild(zb)
   }
   Object.entries(S.elements).forEach(([n,e])=>{
+    if(drag&&drag.n===n&&drag.cur){ // keep the live box where the cursor has it
+      let rc=boxRect(drag.cur);
+      let bx=document.createElement('div');bx.className='box sel'+(crosses(drag.cur)?' warn':'');
+      bx.style.left=(rc.x/S.screen.width*100)+'%';bx.style.top=(rc.y/S.screen.height*100)+'%';
+      bx.style.width=(rc.w/S.screen.width*100)+'%';bx.style.height=(rc.h/S.screen.height*100)+'%';
+      bx.dataset.name=n;ov.appendChild(bx);return
+    }
     let xy=e.properties.xy;if(!xy)return;
     if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);
     let r=boxRect(xy);
@@ -145,13 +152,15 @@ function applySnap(a){
 }
 
 function crosses(a){
-  // true if the dragged element's y sits on/over a divider line or past an edge
-  let r=boxRect(a),ty=topLineY(),by=botLineY();
-  if(r.y<=0||r.x<=0||r.x>=S.screen.width||r.y>=S.screen.height)return true;
-  // crossing a divider line vertically
-  let yTop=r.y,yBot=r.y+(a.length>=4?r.h:10);
-  if(yTop<=ty&&yBot>=ty)return true;
-  if(yTop<=by&&yBot>=by)return true;
+  // warn only on a real problem: pushed off a screen edge, or a box clearly
+  // straddling a divider line (center on the far side), not merely touching a
+  // line it legitimately sits against.
+  let r=boxRect(a),ty=topLineY(),by=botLineY(),W=S.screen.width,H=S.screen.height;
+  if(r.x<0||r.y<0||r.x+r.w>W||r.y+r.h>H)return true;
+  let h=(a.length>=4?r.h:10),cy=r.y+h/2,tol=2;
+  // straddling line1: top above it AND bottom well below it
+  if(r.y<ty-tol && (r.y+h)>ty+tol)return true;
+  if(r.y<by-tol && (r.y+h)>by+tol)return true;
   if(warnOverlap){
     for(let [n,e] of Object.entries(S.elements)){
       if(n===drag.n)continue;let oxy=e.properties.xy;if(!oxy)continue;
@@ -197,7 +206,7 @@ function moveDrag(ev){
   liveBox(a)   // Feature 1: box follows cursor live
 }
 
-function endDrag(ev){if(!drag)return;drag=null;apply()}
+function endDrag(ev){if(!drag)return;drag=null;document.querySelectorAll('.box.warn').forEach(b=>b.classList.remove('warn'));apply()}
 
 // --- Feature: arrow-key nudge ---
 window.addEventListener('keydown',ev=>{

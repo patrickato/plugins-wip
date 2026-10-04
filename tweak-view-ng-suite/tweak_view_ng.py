@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha5"
+    __version__ = "0.1.0-alpha6"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
@@ -1012,7 +1012,7 @@ class TweakViewNG(plugins.Plugin):
             self._save()
             return jsonify({"ok": True, "result": result})
         if path == "api/align" and request.method == "POST":
-            return self._align_strip(request)
+            return self._align_element(request)
         if path == "api/recovery/update" and request.method == "POST":
             return self._recovery_update(request)
         # Unknown mutating route - a clean 404, not a rolled-back edit.
@@ -1040,97 +1040,100 @@ class TweakViewNG(plugins.Plugin):
             return None
         return parts[0], parts[1], parts[2:]
 
-    def _strip_members(self, snap):
-        """Partition editable text-like elements into top/bottom strips by the
-        divider lines (line1/line2), falling back to screen fractions. Only
-        elements that expose an xy and are not the divider lines themselves."""
-        w = snap["screen"]["width"]
+    def _region_bounds(self, snap, y):
+        """Return (y_lo, y_hi) of the horizontal band a given y sits in, bounded
+        by the divider lines (line1/line2) and the screen. Lets "top of this
+        element's area" mean the top of whichever band it lives in, so the
+        direction buttons are never surprising regardless of how thin a strip
+        is."""
         h = snap["screen"]["height"]
         els = snap["elements"]
 
-        def _line_y(name, default):
+        def _ly(name):
             e = els.get(name)
-            if not e:
-                return default
-            got = self._xy_of(e.get("properties", {}))
-            return got[1] if got else default
+            got = self._xy_of(e.get("properties", {})) if e else None
+            return got[1] if got else None
 
-        top_y = _line_y("line1", int(h * 0.12))
-        bot_y = _line_y("line2", int(h * 0.88))
-        top, bottom = [], []
-        for name, e in els.items():
-            if name in ("line1", "line2"):
-                continue
-            got = self._xy_of(e.get("properties", {}))
-            if not got:
-                continue
-            x, y, _extra = got
-            if y < top_y:
-                top.append((name, x, y, got))
-            elif y > bot_y:
-                bottom.append((name, x, y, got))
-        return top, bottom, w, h
+        l1 = _ly("line1")
+        l2 = _ly("line2")
+        edges = [0, h - 1]
+        if l1 is not None:
+            edges.append(l1)
+        if l2 is not None:
+            edges.append(l2)
+        edges = sorted(set(edges))
+        # lo = largest edge at or below y; hi = smallest edge strictly above y.
+        lo, hi = 0, h - 1
+        for e in edges:
+            if e <= y and e > lo:
+                lo = e
+            if e > y and e < hi:
+                hi = e
+        # keep a sane minimum band so a sliver strip still has room
+        if hi - lo < 4:
+            hi = min(h - 1, lo + 4)
+        return lo, hi
 
-    def _align_strip(self, request):
-        """Align (shared baseline) or distribute (even gaps) the elements in the
-        top or bottom status strip, as one undoable transaction.
+    def _align_element(self, request):
+        """Snap ONE selected element to an edge (or center) of the region it
+        lives in. Intuitive per-element alignment:
 
-        Body: {"strip": "top"|"bottom", "op": "align"|"distribute"}.
-        Baseline = median y of the strip (least total movement). Distribute =
-        equal gaps between the leftmost and rightmost element's x positions.
+        Body: {"element": "<name>", "edge": top|bottom|left|right|hcenter|vcenter}.
+
+        "top"/"bottom" snap within the element's horizontal band (bounded by the
+        divider lines / screen); "left"/"right"/"hcenter" work across the screen
+        width; "vcenter" centers within the band. One undoable transaction.
         """
         data = self._json_body(request)
-        strip = str(data.get("strip", "")).strip()
-        op = str(data.get("op", "")).strip()
-        if strip not in ("top", "bottom") or op not in ("align", "distribute"):
-            raise _HttpResult((jsonify({"ok": False, "error": "strip must be top/bottom, op must be align/distribute"}), 400))
+        element = str(data.get("element", "")).strip()
+        edge = str(data.get("edge", "")).strip()
+        valid = {"top", "bottom", "left", "right", "hcenter", "vcenter"}
+        if not element or edge not in valid:
+            raise _HttpResult((jsonify({"ok": False, "error": "element required; edge must be one of %s" % sorted(valid)}), 400))
+        if not self._adapter.has(element):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element"}), 404))
         snap = self._adapter.snapshot()
-        top, bottom, _w, _h = self._strip_members(snap)
-        members = top if strip == "top" else bottom
-        if len(members) < 2:
-            raise _HttpResult((jsonify({"ok": False, "error": "need at least 2 elements in the %s strip" % strip}), 409))
+        props = snap["elements"].get(element, {}).get("properties", {})
+        got = self._xy_of(props)
+        if got is None:
+            raise _HttpResult((jsonify({"ok": False, "error": "element has no position to align"}), 409))
+        x, y, extra = got
+        w = snap["screen"]["width"]
+        h = snap["screen"]["height"]
+        # element footprint (width/height) from a 4-point widget, else a small default
+        ew = (extra[0] - x) if len(extra) >= 2 else 18
+        eh = (extra[1] - y) if len(extra) >= 2 else 12
+        ew = max(1, ew); eh = max(1, eh)
 
-        # Compute new positions.
-        new_xy = {}
-        if op == "align":
-            ys = sorted(m[2] for m in members)
-            mid = len(ys) // 2
-            target_y = ys[mid] if len(ys) % 2 else (ys[mid - 1] + ys[mid]) // 2
-            for name, x, _y, got in members:
-                extra = got[2]
-                if len(extra) >= 2:  # 4-point widget: shift y, keep height
-                    dy = target_y - _y
-                    new_xy[name] = [x, target_y, extra[0], extra[1] + dy]
-                else:
-                    new_xy[name] = [x, target_y]
-        else:  # distribute
-            ordered = sorted(members, key=lambda m: m[1])
-            x_first, x_last = ordered[0][1], ordered[-1][1]
-            n = len(ordered)
-            span = x_last - x_first
-            for i, (name, x, y, got) in enumerate(ordered):
-                nx = x_first if n == 1 else int(round(x_first + span * i / (n - 1)))
-                extra = got[2]
-                if extra and len(extra) >= 2:
-                    dx = nx - x
-                    new_xy[name] = [nx, y, extra[0] + dx, extra[1]]
-                else:
-                    new_xy[name] = [nx, y]
+        nx, ny = x, y
+        if edge in ("top", "bottom", "vcenter"):
+            lo, hi = self._region_bounds(snap, y)
+            if edge == "top":
+                ny = lo
+            elif edge == "bottom":
+                ny = max(lo, hi - eh)
+            else:  # vcenter
+                ny = max(lo, lo + ((hi - lo) - eh) // 2)
+        else:
+            if edge == "left":
+                nx = 0
+            elif edge == "right":
+                nx = max(0, w - ew)
+            else:  # hcenter
+                nx = max(0, (w - ew) // 2)
 
-        # Apply as one transaction (runs inside _mutating_route -> rollback-safe).
+        if len(extra) >= 2:
+            new_xy = [nx, ny, nx + ew, ny + eh]
+        else:
+            new_xy = [nx, ny]
+
         self._push_history()
         profile = self._profile()
-        changed = []
-        for name, xy in new_xy.items():
-            profile.setdefault("edits", {}).setdefault(name, {})["xy"] = xy
-            try:
-                self._adapter.apply_properties(name, {"xy": xy}, self._originals)
-                changed.append(name)
-            except Exception as exc:
-                LOG.warning("Tweak View NG: align failed for %s: %s", name, exc)
+        profile.setdefault("edits", {}).setdefault(element, {})["xy"] = new_xy
+        self._adapter.apply_properties(element, {"xy": new_xy}, self._originals)
         self._save()
         self._adapter.redraw()
-        return jsonify({"ok": True, "strip": strip, "op": op, "changed": sorted(changed)})
+        return jsonify({"ok": True, "element": element, "edge": edge, "xy": new_xy})
 
     # ------------------------------------------------------------------ #
     # Minimal server-rendered recovery editor (harvest item 8)
@@ -1235,11 +1238,11 @@ WEB_UI = r"""
 .zone{position:absolute;background:repeating-linear-gradient(45deg,#5bd1ff0f,#5bd1ff0f 6px,transparent 6px,transparent 12px);pointer-events:none;border-top:1px dashed #5bd1ff44;border-bottom:1px dashed #5bd1ff44}
 .dot{color:var(--a);font-size:9px;margin-left:4px;vertical-align:middle}
 button.on{border-color:var(--a);background:#101a20;color:var(--a)}
-.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0}
+.align-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:6px 0}.align-pad{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin:6px 0}.align-pad button{font-size:12px;padding:6px}
 .align-grid button{font-size:12px;padding:6px}
 .hint{color:var(--dim);font-size:11px;margin:4px 0 2px}
 </style></head>
-<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Auto-align strips</div><div class="align-grid"><button onclick="alignStrip('top','align')">Align top</button><button onclick="alignStrip('top','distribute')">Distribute top</button><button onclick="alignStrip('bottom','align')">Align bottom</button><button onclick="alignStrip('bottom','distribute')">Distribute bottom</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
+<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Align selected element</div><div class="align-pad"><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
 <script>const CSRF=document.querySelector('meta[name=csrf_token]').content;
 let S=null,selected=null,drag=null;
 let snap=true, overlayZones=true, warnOverlap=false;
@@ -1319,7 +1322,7 @@ async function redo(){try{await api('api/redo','POST',{});await refresh();reload
 function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/add_shape','POST',{name,type,properties:{xy:[5,5,40,25],color:255,width:1}}).then(()=>{selected=name;refresh();reloadPreview()}).catch(e=>msg(e.message,true))}
 
 // --- auto-align (server does the math) ---
-async function alignStrip(strip,op){try{await api('api/align','POST',{strip,op});await refresh();reloadPreview();msg(op+' '+strip+' ✓')}catch(e){msg(e.message,true)}}
+async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';
@@ -1359,6 +1362,13 @@ function drawBoxes(){
     let zb=document.createElement('div');zb.className='zone';zb.style.left='0';zb.style.top=(by/S.screen.height*100)+'%';zb.style.width='100%';zb.style.height=((S.screen.height-by)/S.screen.height*100)+'%';ov.appendChild(zb)
   }
   Object.entries(S.elements).forEach(([n,e])=>{
+    if(drag&&drag.n===n&&drag.cur){ // keep the live box where the cursor has it
+      let rc=boxRect(drag.cur);
+      let bx=document.createElement('div');bx.className='box sel'+(crosses(drag.cur)?' warn':'');
+      bx.style.left=(rc.x/S.screen.width*100)+'%';bx.style.top=(rc.y/S.screen.height*100)+'%';
+      bx.style.width=(rc.w/S.screen.width*100)+'%';bx.style.height=(rc.h/S.screen.height*100)+'%';
+      bx.dataset.name=n;ov.appendChild(bx);return
+    }
     let xy=e.properties.xy;if(!xy)return;
     if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);
     let r=boxRect(xy);
@@ -1387,13 +1397,15 @@ function applySnap(a){
 }
 
 function crosses(a){
-  // true if the dragged element's y sits on/over a divider line or past an edge
-  let r=boxRect(a),ty=topLineY(),by=botLineY();
-  if(r.y<=0||r.x<=0||r.x>=S.screen.width||r.y>=S.screen.height)return true;
-  // crossing a divider line vertically
-  let yTop=r.y,yBot=r.y+(a.length>=4?r.h:10);
-  if(yTop<=ty&&yBot>=ty)return true;
-  if(yTop<=by&&yBot>=by)return true;
+  // warn only on a real problem: pushed off a screen edge, or a box clearly
+  // straddling a divider line (center on the far side), not merely touching a
+  // line it legitimately sits against.
+  let r=boxRect(a),ty=topLineY(),by=botLineY(),W=S.screen.width,H=S.screen.height;
+  if(r.x<0||r.y<0||r.x+r.w>W||r.y+r.h>H)return true;
+  let h=(a.length>=4?r.h:10),cy=r.y+h/2,tol=2;
+  // straddling line1: top above it AND bottom well below it
+  if(r.y<ty-tol && (r.y+h)>ty+tol)return true;
+  if(r.y<by-tol && (r.y+h)>by+tol)return true;
   if(warnOverlap){
     for(let [n,e] of Object.entries(S.elements)){
       if(n===drag.n)continue;let oxy=e.properties.xy;if(!oxy)continue;
@@ -1439,7 +1451,7 @@ function moveDrag(ev){
   liveBox(a)   // Feature 1: box follows cursor live
 }
 
-function endDrag(ev){if(!drag)return;drag=null;apply()}
+function endDrag(ev){if(!drag)return;drag=null;document.querySelectorAll('.box.warn').forEach(b=>b.classList.remove('warn'));apply()}
 
 // --- Feature: arrow-key nudge ---
 window.addEventListener('keydown',ev=>{

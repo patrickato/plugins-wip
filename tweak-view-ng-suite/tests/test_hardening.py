@@ -446,56 +446,52 @@ def _align_setup(tmp_path, monkeypatch):
     return p, v
 
 
-def test_align_top_shares_baseline(tmp_path, monkeypatch):
+def test_align_element_left_right_center(tmp_path, monkeypatch):
     p, v = _align_setup(tmp_path, monkeypatch)
-    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
-    assert r["ok"] and r["strip"] == "top" and r["op"] == "align"
-    # all three top elements now share one y (the median of 2,6,10 = 6)
-    ys = {name: v._state._state[name].xy[1] for name in ("channel", "aps", "uptime")}
-    assert len(set(ys.values())) == 1, ys
-    assert set(ys.values()) == {6}
+    # aps is a Text (2-point); left -> x=0
+    r = p._route_api("api/align", Req("POST", {"element": "aps", "edge": "left"}))
+    assert r["ok"] and r["edge"] == "left"
+    assert v._state._state["aps"].xy[0] == 0
+    # right -> x = width - element_width (480 - 18 default = 462)
+    p._route_api("api/align", Req("POST", {"element": "aps", "edge": "right"}))
+    assert v._state._state["aps"].xy[0] == 480 - 18
+    # hcenter -> (480-18)//2
+    p._route_api("api/align", Req("POST", {"element": "aps", "edge": "hcenter"}))
+    assert v._state._state["aps"].xy[0] == (480 - 18) // 2
 
 
-def test_distribute_top_even_gaps(tmp_path, monkeypatch):
+def test_align_element_top_bottom_within_region(tmp_path, monkeypatch):
+    # aps sits at y=6, above line1 (y=20): its region is [0,20).
     p, v = _align_setup(tmp_path, monkeypatch)
-    p._route_api("api/align", Req("POST", {"strip": "top", "op": "distribute"}))
-    xs = sorted(v._state._state[n].xy[0] for n in ("channel", "aps", "uptime"))
-    # first and last pinned (5 and 400), middle evenly between -> ~202
-    assert xs[0] == 5 and xs[-1] == 400
-    gap1, gap2 = xs[1] - xs[0], xs[2] - xs[1]
-    assert abs(gap1 - gap2) <= 1, xs
+    p._route_api("api/align", Req("POST", {"element": "aps", "edge": "top"}))
+    assert v._state._state["aps"].xy[1] == 0          # top of its band
+    p._route_api("api/align", Req("POST", {"element": "aps", "edge": "bottom"}))
+    # bottom of the [0,20) band, minus the element height (default 12) -> 8
+    assert v._state._state["aps"].xy[1] == 20 - 12
 
 
-def test_align_bottom_independent_of_top(tmp_path, monkeypatch):
-    p, v = _align_setup(tmp_path, monkeypatch)
-    p._route_api("api/align", Req("POST", {"strip": "bottom", "op": "align"}))
-    ys = {n: v._state._state[n].xy[1] for n in ("shakes", "mode")}
-    assert len(set(ys.values())) == 1
-    # top strip untouched
-    assert v._state._state["channel"].xy[1] == 2
-
-
-def test_align_persists_and_is_undoable(tmp_path, monkeypatch):
+def test_align_element_persists_and_undoes(tmp_path, monkeypatch):
     p, v = _align_setup(tmp_path, monkeypatch)
     before = tuple(v._state._state["aps"].xy)
-    p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
+    p._route_api("api/align", Req("POST", {"element": "aps", "edge": "left"}))
     saved = json.load(open(tmp_path / "ng.json"))
     assert "aps" in saved["profiles"]["default"]["edits"]
-    # undo restores
     p._route_api("api/undo", Req("POST", {}))
     assert tuple(v._state._state["aps"].xy) == before
 
 
-def test_align_rejects_bad_params(tmp_path, monkeypatch):
+def test_align_element_rejects_bad_input(tmp_path, monkeypatch):
     p, v = _align_setup(tmp_path, monkeypatch)
-    r = p._route_api("api/align", Req("POST", {"strip": "sideways", "op": "align"}))
+    r = p._route_api("api/align", Req("POST", {"element": "aps", "edge": "sideways"}))
     assert isinstance(r, tuple) and r[1] == 400
-    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "frobnicate"}))
+    r = p._route_api("api/align", Req("POST", {"element": "ghost", "edge": "left"}))
+    assert isinstance(r, tuple) and r[1] == 404
+    r = p._route_api("api/align", Req("POST", {"edge": "left"}))
     assert isinstance(r, tuple) and r[1] == 400
 
 
-def test_align_needs_two_members(tmp_path, monkeypatch):
-    # a strip with <2 members returns 409, not a crash
+def test_align_single_element_works(tmp_path, monkeypatch):
+    # unlike the old strip design, aligning ONE element needs no second element
     store = tv.LayoutStore(str(tmp_path / "ng.json")); store.save(store.empty())
     p = tv.TweakViewNG()
     p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
@@ -503,28 +499,29 @@ def test_align_needs_two_members(tmp_path, monkeypatch):
     p.on_loaded()
     from pwnagotchi.ui.components import Line
     v = FakeView(480, 320)
-    v.add_element("line1", Line((0, 20, 480, 20)))
+    v.add_element("line1", Line((0, 14, 480, 14)))
     v.add_element("line2", Line((0, 300, 480, 300)))
-    v.add_element("aps", Text("aps", (120, 6), font=fonts.Small))  # only one top member
+    v.add_element("aps", Text("aps", (120, 6), font=fonts.Small))  # lone element
     p.on_ui_setup(v)
-    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
-    assert isinstance(r, tuple) and r[1] == 409
+    r = p._route_api("api/align", Req("POST", {"element": "aps", "edge": "left"}))
+    assert r["ok"]  # no "need 2 elements" error any more
+    assert v._state._state["aps"].xy[0] == 0
 
 
 def test_editor_js_has_new_features():
     js = tv.WEB_UI
-    # real-time drag: liveBox called in moveDrag
+    # real-time drag
     assert "liveBox" in js
     # arrow-key nudge
     assert "ArrowLeft" in js and "shiftKey" in js
-    # border warning
-    assert "warn" in js and "crosses" in js
-    # auto-align buttons wired
-    assert "alignStrip" in js
+    # border warning + clear-on-release
+    assert "crosses" in js and "classList.remove('warn')" in js
+    # per-element align buttons (not the old strip ones)
+    assert "alignEl" in js and "alignStrip" not in js
     # snap + zones toggles
     assert "toggleSnap" in js and "toggleZones" in js
-    # safe-zone + labels
-    assert "zone" in js and "blabel" in js
+    # safe-zone + labels + no-rebuild-on-drag guard
+    assert "zone" in js and "blabel" in js and "drag.cur" in js
 
 
 def test_startdrag_does_not_rebuild_overlay():

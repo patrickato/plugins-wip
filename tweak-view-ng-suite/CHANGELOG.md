@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.0-alpha6
+
+Editor fixes + redesign of alignment, from on-hardware testing feedback.
+
+### Changed
+
+- **Alignment is now per-element, not per-strip.** Testing showed the
+  "Align top / Align bottom" strip buttons were confusing (people read them as
+  "align THIS element to the top/bottom") and brittle (a 14px-tall top strip,
+  elements sitting exactly on a divider line counting as "outside" a strip).
+  Replaced with an intuitive align pad on the selected element: Left / Center /
+  Right and Top / Middle / Bottom, each snapping within the element's own region
+  (bounded by the divider lines / screen). Works on a single element — no
+  "need 2 elements" error. New `api/align` body: `{element, edge}`.
+
+### Fixed
+
+- **Warning box stayed red after dropping.** `.warn` is now cleared on release.
+- **Top-strip elements were always red.** The crossing check flagged any box
+  touching a divider line; a thin top strip sits against line1 permanently.
+  Now it only warns on a real straddle (box center past the line) or a box
+  pushed off a screen edge.
+- **Box snapped back when the pwnagotchi UI updated mid-move.** `drawBoxes` now
+  keeps the box being dragged at the cursor position instead of repainting it
+  from saved state on a background `/ui` refresh.
+
+## 0.1.0-alpha5
 ## 0.1.0-alpha5
 
 Bugfix for the alpha4 editor upgrades, found in on-hardware testing.
