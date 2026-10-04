@@ -108,6 +108,7 @@ function scale(){
 function boxRect(xy){let x=xy[0]||0,y=xy[1]||0,w=xy.length>=4?Math.max(4,(xy[2]-x)):18,h=xy.length>=4?Math.max(4,(xy[3]-y)):12;return {x,y,w,h}}
 
 function drawBoxes(){
+  if(drag)return;            // never rebuild the overlay mid-drag (would kill the live box)
   let ov=document.getElementById('overlay');ov.innerHTML='';
   if(!S)return;
   // safe-zone shading for top/bottom strips
@@ -117,13 +118,6 @@ function drawBoxes(){
     let zb=document.createElement('div');zb.className='zone';zb.style.left='0';zb.style.top=(by/S.screen.height*100)+'%';zb.style.width='100%';zb.style.height=((S.screen.height-by)/S.screen.height*100)+'%';ov.appendChild(zb)
   }
   Object.entries(S.elements).forEach(([n,e])=>{
-    if(drag&&drag.n===n&&drag.cur){ // keep the live box where the cursor has it
-      let rc=boxRect(drag.cur);
-      let bx=document.createElement('div');bx.className='box sel'+(crosses(drag.cur)?' warn':'');
-      bx.style.left=(rc.x/S.screen.width*100)+'%';bx.style.top=(rc.y/S.screen.height*100)+'%';
-      bx.style.width=(rc.w/S.screen.width*100)+'%';bx.style.height=(rc.h/S.screen.height*100)+'%';
-      bx.dataset.name=n;ov.appendChild(bx);return
-    }
     let xy=e.properties.xy;if(!xy)return;
     if(!Array.isArray(xy))xy=String(xy).split(',').map(Number);
     let r=boxRect(xy);
@@ -224,6 +218,6 @@ window.addEventListener('keydown',ev=>{
 });
 
 window.addEventListener('resize',scale);
-document.getElementById('preview').onload=()=>{scale();drawBoxes()};
+document.getElementById('preview').onload=()=>{if(drag)return;scale();drawBoxes()};
 refresh();
-setInterval(()=>reloadPreview(),7000);
+setInterval(()=>{if(!drag)reloadPreview()},7000);

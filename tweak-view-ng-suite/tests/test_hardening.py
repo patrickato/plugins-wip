@@ -521,7 +521,9 @@ def test_editor_js_has_new_features():
     # snap + zones toggles
     assert "toggleSnap" in js and "toggleZones" in js
     # safe-zone + labels + no-rebuild-on-drag guard
-    assert "zone" in js and "blabel" in js and "drag.cur" in js
+    assert "zone" in js and "blabel" in js
+    # overlay is not rebuilt mid-drag (prevents the box detaching)
+    assert "if(drag)return" in js
 
 
 def test_startdrag_does_not_rebuild_overlay():

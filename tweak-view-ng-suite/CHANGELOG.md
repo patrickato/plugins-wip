@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.0-alpha7
+
+Fix: dragged box could freeze/detach from its element.
+
+### Fixed
+
+- **Box froze and detached during a drag when the pwnagotchi UI updated.** The
+  editor rebuilds its box overlay whenever the `/ui` preview image reloads
+  (every 7s, and on the face/stats changing). Rebuilding mid-drag destroyed the
+  box being dragged along with its live pointer handlers, stranding the box
+  while the element stayed put. Now the overlay is never rebuilt while a drag is
+  in progress: `drawBoxes()` returns early, the preview `onload` redraw is
+  skipped, and the 7s auto-reload pauses, all until the drag ends — then one
+  clean refresh repaints the committed position. (Replaces the alpha6
+  keep-at-cursor guard, which was the source of the detach.)
+
+## 0.1.0-alpha6
 ## 0.1.0-alpha6
 
 Editor fixes + redesign of alignment, from on-hardware testing feedback.
