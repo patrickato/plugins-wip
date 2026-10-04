@@ -416,3 +416,112 @@ def test_recovery_and_editor_still_have_no_external_deps():
     for blob in (tv.WEB_UI, tv.RECOVERY_UI):
         low = blob.lower()
         assert "http://" not in low and "https://" not in low
+
+
+# --------------------------------------------------------------------------- #
+# Auto-align endpoint (editor upgrade, alpha4)
+# --------------------------------------------------------------------------- #
+
+def _align_setup(tmp_path, monkeypatch):
+    """A view with line1/line2 dividers and several strip elements at varied
+    positions, taken to READY."""
+    store = tv.LayoutStore(str(tmp_path / "ng.json")); store.save(store.empty())
+    p = tv.TweakViewNG()
+    p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
+    monkeypatch.setattr(p, "_build_fonts", lambda: setattr(p, "_fonts", registry()))
+    p.on_loaded()
+    from pwnagotchi.ui.components import Line
+    v = FakeView(480, 320)
+    # dividers
+    v.add_element("line1", Line((0, 20, 480, 20)))
+    v.add_element("line2", Line((0, 300, 480, 300)))
+    # top strip (y < 20): varied y and x
+    v.add_element("channel", Text("ch", (5, 2), font=fonts.Small))
+    v.add_element("aps", Text("aps", (120, 6), font=fonts.Small))
+    v.add_element("uptime", Text("up", (400, 10), font=fonts.Small))
+    # bottom strip (y > 300)
+    v.add_element("shakes", Text("pwnd", (5, 305), font=fonts.Small))
+    v.add_element("mode", Text("AUTO", (420, 310), font=fonts.Small))
+    p.on_ui_setup(v)
+    return p, v
+
+
+def test_align_top_shares_baseline(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
+    assert r["ok"] and r["strip"] == "top" and r["op"] == "align"
+    # all three top elements now share one y (the median of 2,6,10 = 6)
+    ys = {name: v._state._state[name].xy[1] for name in ("channel", "aps", "uptime")}
+    assert len(set(ys.values())) == 1, ys
+    assert set(ys.values()) == {6}
+
+
+def test_distribute_top_even_gaps(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    p._route_api("api/align", Req("POST", {"strip": "top", "op": "distribute"}))
+    xs = sorted(v._state._state[n].xy[0] for n in ("channel", "aps", "uptime"))
+    # first and last pinned (5 and 400), middle evenly between -> ~202
+    assert xs[0] == 5 and xs[-1] == 400
+    gap1, gap2 = xs[1] - xs[0], xs[2] - xs[1]
+    assert abs(gap1 - gap2) <= 1, xs
+
+
+def test_align_bottom_independent_of_top(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    p._route_api("api/align", Req("POST", {"strip": "bottom", "op": "align"}))
+    ys = {n: v._state._state[n].xy[1] for n in ("shakes", "mode")}
+    assert len(set(ys.values())) == 1
+    # top strip untouched
+    assert v._state._state["channel"].xy[1] == 2
+
+
+def test_align_persists_and_is_undoable(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    before = tuple(v._state._state["aps"].xy)
+    p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
+    saved = json.load(open(tmp_path / "ng.json"))
+    assert "aps" in saved["profiles"]["default"]["edits"]
+    # undo restores
+    p._route_api("api/undo", Req("POST", {}))
+    assert tuple(v._state._state["aps"].xy) == before
+
+
+def test_align_rejects_bad_params(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    r = p._route_api("api/align", Req("POST", {"strip": "sideways", "op": "align"}))
+    assert isinstance(r, tuple) and r[1] == 400
+    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "frobnicate"}))
+    assert isinstance(r, tuple) and r[1] == 400
+
+
+def test_align_needs_two_members(tmp_path, monkeypatch):
+    # a strip with <2 members returns 409, not a crash
+    store = tv.LayoutStore(str(tmp_path / "ng.json")); store.save(store.empty())
+    p = tv.TweakViewNG()
+    p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
+    monkeypatch.setattr(p, "_build_fonts", lambda: setattr(p, "_fonts", registry()))
+    p.on_loaded()
+    from pwnagotchi.ui.components import Line
+    v = FakeView(480, 320)
+    v.add_element("line1", Line((0, 20, 480, 20)))
+    v.add_element("line2", Line((0, 300, 480, 300)))
+    v.add_element("aps", Text("aps", (120, 6), font=fonts.Small))  # only one top member
+    p.on_ui_setup(v)
+    r = p._route_api("api/align", Req("POST", {"strip": "top", "op": "align"}))
+    assert isinstance(r, tuple) and r[1] == 409
+
+
+def test_editor_js_has_new_features():
+    js = tv.WEB_UI
+    # real-time drag: liveBox called in moveDrag
+    assert "liveBox" in js
+    # arrow-key nudge
+    assert "ArrowLeft" in js and "shiftKey" in js
+    # border warning
+    assert "warn" in js and "crosses" in js
+    # auto-align buttons wired
+    assert "alignStrip" in js
+    # snap + zones toggles
+    assert "toggleSnap" in js and "toggleZones" in js
+    # safe-zone + labels
+    assert "zone" in js and "blabel" in js
