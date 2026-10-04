@@ -48,9 +48,10 @@ can join this bus as just another read-only consumer — the paths are the contr
 
 Any plugin that can deauth/jam/target networks gates on an **explicit authorized-target
 allowlist (BSSID and/or SSID), empty by default** — never on physical/signal-range
-assumptions. See WifiJammerNG (`wifi-jammer-suite`) for the reference implementation. This
-is non-negotiable; keep the allowlist gate itself strict while making legitimate use
-low-friction.
+assumptions. The reference deauth implementation (`WifiJtest`, formerly `WifiJammerNG`)
+now lives as `wifiJtest` in `patrickato/test-plugins` (moved there); `crack-pipeline-suite`
+in this repo applies the same gate to a cracking pipeline. This is non-negotiable; keep the
+allowlist gate itself strict while making legitimate use low-friction.
 
 ## Any suite running its own web server
 

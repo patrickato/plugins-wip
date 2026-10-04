@@ -52,7 +52,7 @@ question in incompatible ways.
 4. **Wrong declared dependency.** `__dependencies__ = {"pip":
    ["scapy"]}`, but `scapy` is never imported anywhere in the file -
    every BLE interaction goes through `agent.run("ble.recon ...")`,
-   bettercap's own API, exactly like `wifi_jammer_ng.py`'s
+   bettercap's own API, exactly like `wifiJtest.py`'s
    `agent.run("wifi.deauth ...")` and `gps_tagger_ng.py`'s
    `agent.run("gps on")` already do in this project. Fixed: no `pip`
    dependency declared for the BLE half at all.

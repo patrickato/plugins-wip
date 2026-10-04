@@ -90,12 +90,13 @@ never touch a network the user doesn't explicitly own or have
 permission to test. This is the single safety mechanism for that whole
 class of suite, not a style nicety.
 
-**The mechanism, now applied in `wifi-jammer-suite` (`wifi_jammer_ng.py`)
-and `crack-pipeline-suite` (`crack_pipeline_ng.py`):**
+**The mechanism, applied in `crack-pipeline-suite` (`crack_pipeline_ng.py`)
+in this repo, and in `wifiJtest` (`wifiJtest.py`, formerly `wifiJtest.py`,
+moved to `patrickato/test-plugins`):**
 
 1. **One config option, `authorized_networks`, a list, empty by
    default.** Empty means total inaction for whatever the suite's real
-   effect is - `wifi_jammer_ng.py` never calls `agent.run('wifi.deauth
+   effect is - `wifiJtest.py` never calls `agent.run('wifi.deauth
    ...')`, `crack_pipeline_ng.py` never invokes `hcxpcapngtool`/
    `hashcat` - no matter what else the suite does (both still log/
    classify/display around that gate; only the actual effect is held
@@ -117,7 +118,7 @@ and `crack-pipeline-suite` (`crack_pipeline_ng.py`):**
    effect without a full plugin/process restart.
 4. **Normalize the AP argument before matching it**, via each suite's
    own `_as_ap_dict(ap)` helper - `on_handshake`'s (and, for
-   `wifi_jammer_ng.py`, `on_association`'s) AP argument can arrive as
+   `wifiJtest.py`, `on_association`'s) AP argument can arrive as
    either a full dict or a bare MAC string on this fork, confirmed
    against the real cloned `agent.py`. Calling `.get()` on a bare string
    raises `AttributeError` and silently drops the event - every

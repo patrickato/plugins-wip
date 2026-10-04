@@ -46,7 +46,7 @@ you own - is an unauthorized password-cracking attempt against other
 people's networks, regardless of whether it ever touches a radio directly.
 
 **In this merged plugin, the same `authorized_networks` allowlist (empty by
-default, same name/semantics as this repo's `wifi-jammer-suite`) gates every
+default, same name/semantics as `wifiJtest` (moved to patrickato/test-plugins)) gates every
 actual hashcat invocation - plain pass and rule pass alike. No exceptions.**
 See NOTES.md for the full writeup of this correction.
 
