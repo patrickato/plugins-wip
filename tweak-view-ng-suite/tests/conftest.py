@@ -34,7 +34,7 @@ sys.modules.update({'pwnagotchi':pwn,'pwnagotchi.plugins':plugins,'pwnagotchi.ui
 pwn.plugins=plugins
 
 # flask stubs: sufficient for import and direct lifecycle/unit tests
-flask=types.ModuleType('flask')
+flask=types.ModuleType('flask'); flask.__TWEAKVIEW_STUB__=True
 def abort(code): raise RuntimeError(f'abort:{code}')
 def jsonify(obj): return obj
 def render_template_string(s,**kw): return s

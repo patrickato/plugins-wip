@@ -89,12 +89,18 @@ def _try_import_real(root):
         root = str(root)
         if root not in sys.path:
             sys.path.insert(0, root)
-    # Drop any stub the unit conftest may have planted in a shared process.
+    # Drop any stub the unit conftest may have planted in a shared process -
+    # stub pwnagotchi.* modules, a stub flask, and any already-imported
+    # tweak_view_ng bound against them.
     for name in list(sys.modules):
-        if name == "pwnagotchi" or name.startswith("pwnagotchi."):
-            mod = sys.modules[name]
-            if getattr(mod, "__TWEAKVIEW_STUB__", False):
-                del sys.modules[name]
+        mod = sys.modules.get(name)
+        if mod is None:
+            continue
+        if getattr(mod, "__TWEAKVIEW_STUB__", False):
+            del sys.modules[name]
+        elif name == "tweak_view_ng":
+            # Re-import later against the real framework + real flask.
+            del sys.modules[name]
     try:
         pwn = importlib.import_module("pwnagotchi")
     except Exception:

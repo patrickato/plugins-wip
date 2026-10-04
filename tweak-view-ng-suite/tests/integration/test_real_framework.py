@@ -220,10 +220,85 @@ def test_full_lifecycle_on_real_view(ng_module, real_view_factory, real_fonts, t
         def get_json(self, silent=True):
             return self._data
 
-    res = plugin._route_api("api/update", Req(data={"element": "face", "properties": {"xy": [77, 88]}}))
-    assert res["ok"]
-    assert tuple(view._state._state["face"].xy) == (77, 88)
-    # Undo restores the real widget.
-    plugin._route_api("api/undo", Req(data={}))
+    # jsonify() needs a real Flask app context here (the genuine flask, not a
+    # stub), which is itself part of verifying NG works on the real stack.
+    import flask
+    app = flask.Flask(__name__)
+    with app.app_context():
+        res = plugin._route_api("api/update", Req(data={"element": "face", "properties": {"xy": [77, 88]}}))
+        res_json = res.get_json() if hasattr(res, "get_json") else res
+        assert res_json["ok"]
+        assert tuple(view._state._state["face"].xy) == (77, 88)
+        # Undo restores the real widget.
+        plugin._route_api("api/undo", Req(data={}))
     # Unload cleans up and restores.
     plugin.on_unload(view)
+
+
+# --------------------------------------------------------------------------- #
+# Real Flask/Jinja webhook behavior (harvest items 4, 6, 8 end-to-end)
+# --------------------------------------------------------------------------- #
+
+def _ready_plugin_real(ng_module, real_view_factory, real_fonts, tmp_path, monkeypatch, extra=None):
+    view = real_view_factory(480, 320)
+    for name, widget in (extra or {}).items():
+        view.add_element(name, widget)
+    p = ng_module.TweakViewNG()
+    p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
+    monkeypatch.setattr(p, "_build_fonts", lambda: setattr(p, "_fonts", _registry(real_fonts)))
+    p.on_loaded()
+    p.on_ui_setup(view)
+    return p, view
+
+
+def test_recovery_page_renders_through_real_jinja(ng_module, real_view_factory, real_fonts, tmp_path, monkeypatch):
+    """The real Flask render_template_string autoescapes; hostile widget names
+    and label values must come back entity-escaped, proving item 6 holds on the
+    genuine stack."""
+    import flask
+    from pwnagotchi.ui.components import LabeledValue
+    hostile_label = "<script>alert('x')</script>"
+    # LabeledValue exposes an editable 'label' prop, so the hostile value is
+    # actually rendered into the recovery page and must be escaped. The element
+    # name is hostile too.
+    extra = {"evil<b>name</b>": LabeledValue(label=hostile_label, value="v", position=(1, 1),
+                                             label_font=real_fonts.Bold, text_font=real_fonts.Small)}
+    p, view = _ready_plugin_real(ng_module, real_view_factory, real_fonts, tmp_path, monkeypatch, extra)
+    app = flask.Flask(__name__)
+    app.config["WTF_CSRF_ENABLED"] = False
+    with app.test_request_context("/"):
+        # csrf_token() is provided by flask_wtf in production; stub it for render.
+        flask.current_app.jinja_env.globals.setdefault("csrf_token", lambda: "tok")
+        html = p._recovery_html()
+    # Neither the hostile name nor the hostile label value appears as raw markup.
+    assert "<script>alert('x')</script>" not in html
+    assert "evil<b>name</b>" not in html
+    assert "&lt;script&gt;" in html  # escaped hostile label value is present
+
+
+def test_webhook_not_ready_returns_503_through_real_stack(ng_module, real_pwnagotchi, tmp_path, monkeypatch):
+    import flask
+    p = ng_module.TweakViewNG()
+    p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
+    monkeypatch.setattr(p, "_build_fonts", lambda: setattr(p, "_fonts", {}))
+    p.on_loaded()  # not ui-set-up yet
+    app = flask.Flask(__name__)
+    with app.test_request_context("/plugins/tweak_view_ng/api/update", method="POST", json={"element": "face", "properties": {}}):
+        result = p.on_webhook("api/update", flask.request)
+    # Flask-style (body, status) tuple with 503
+    assert isinstance(result, tuple) and result[1] == 503
+
+
+def test_webhook_api_ready_before_setup_real(ng_module, real_pwnagotchi, tmp_path, monkeypatch):
+    import flask
+    p = ng_module.TweakViewNG()
+    p.options = {"filename": str(tmp_path / "ng.json"), "legacy_filename": str(tmp_path / "none.json")}
+    monkeypatch.setattr(p, "_build_fonts", lambda: setattr(p, "_fonts", {}))
+    p.on_loaded()
+    app = flask.Flask(__name__)
+    with app.test_request_context("/plugins/tweak_view_ng/api/ready", method="GET"):
+        resp = p.on_webhook("api/ready", flask.request)
+    # jsonify returns a Response; pull JSON back out
+    data = resp.get_json() if hasattr(resp, "get_json") else resp
+    assert data["ready"] is False
+    assert data["phase"] == ng_module.TweakViewNG.PHASE_WAITING_UI
