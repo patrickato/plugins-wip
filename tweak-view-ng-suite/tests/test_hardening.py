@@ -538,3 +538,79 @@ def test_startdrag_does_not_rebuild_overlay():
     assert "setPointerCapture" in sd
     assert "user-select:none" in js
     assert "pointer-events:none" in js  # the name label must not steal the pointer
+
+
+# --------------------------------------------------------------------------- #
+# Polish pass (alpha8): match coord, stack, profile rename/delete
+# --------------------------------------------------------------------------- #
+
+def test_match_coordinate_x_and_y(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    # aps=(120,6), uptime=(400,10). Match aps X of uptime -> x=400, y unchanged
+    r = p._route_api("api/match", Req("POST", {"element": "aps", "target": "uptime", "axis": "x"}))
+    assert r["ok"]
+    assert v._state._state["aps"].xy[0] == 400 and v._state._state["aps"].xy[1] == 6
+    # Match aps Y of channel (y=2) -> y=2, x unchanged
+    r = p._route_api("api/match", Req("POST", {"element": "aps", "target": "channel", "axis": "y"}))
+    assert v._state._state["aps"].xy[1] == 2 and v._state._state["aps"].xy[0] == 400
+
+
+def test_match_rejects_bad(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    assert p._route_api("api/match", Req("POST", {"element": "aps", "target": "aps", "axis": "x"}))[1] == 400
+    assert p._route_api("api/match", Req("POST", {"element": "aps", "target": "ghost", "axis": "x"}))[1] == 404
+    assert p._route_api("api/match", Req("POST", {"element": "aps", "target": "uptime", "axis": "z"}))[1] == 400
+
+
+def test_stack_elements_even(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    # stack channel(y2), aps(y6), uptime(y10) -> even between 2 and 10, shared x
+    r = p._route_api("api/stack", Req("POST", {"elements": ["channel", "aps", "uptime"]}))
+    assert r["ok"] and len(r["stacked"]) == 3
+    xs = {v._state._state[n].xy[0] for n in ("channel", "aps", "uptime")}
+    assert len(xs) == 1  # all share one column
+    ys = sorted(v._state._state[n].xy[1] for n in ("channel", "aps", "uptime"))
+    assert ys[0] == 2 and ys[-1] == 10
+    assert abs((ys[1] - ys[0]) - (ys[2] - ys[1])) <= 1  # even gaps
+
+
+def test_stack_with_explicit_gap(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    p._route_api("api/stack", Req("POST", {"elements": ["channel", "aps", "uptime"], "x": 5, "gap": 12}))
+    ys = sorted(v._state._state[n].xy[1] for n in ("channel", "aps", "uptime"))
+    assert ys == [2, 14, 26]  # y0=2, +12 each
+    assert all(v._state._state[n].xy[0] == 5 for n in ("channel", "aps", "uptime"))
+
+
+def test_stack_needs_two(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    assert p._route_api("api/stack", Req("POST", {"elements": ["aps"]}))[1] == 400
+    assert p._route_api("api/stack", Req("POST", {"elements": ["aps", "ghost"]}))[1] == 404
+
+
+def test_profile_rename_and_delete(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    # create 'night', rename to 'dark', then delete it
+    p._route_api("api/profile", Req("POST", {"name": "night"}))
+    assert "night" in p._layout["profiles"] and p._layout["active_profile"] == "night"
+    r = p._route_api("api/profile", Req("POST", {"op": "rename", "name": "night", "new": "dark"}))
+    assert r["ok"] and "dark" in p._layout["profiles"] and "night" not in p._layout["profiles"]
+    assert p._layout["active_profile"] == "dark"
+    r = p._route_api("api/profile", Req("POST", {"op": "delete", "name": "dark"}))
+    assert r["ok"] and "dark" not in p._layout["profiles"]
+    assert p._layout["active_profile"] == "default"
+
+
+def test_profile_cannot_delete_or_rename_default(tmp_path, monkeypatch):
+    p, v = _align_setup(tmp_path, monkeypatch)
+    assert p._route_api("api/profile", Req("POST", {"op": "delete", "name": "default"}))[1] == 400
+    assert p._route_api("api/profile", Req("POST", {"op": "rename", "name": "default", "new": "x"}))[1] == 400
+
+
+def test_editor_js_has_polish_features():
+    js = tv.WEB_UI
+    assert "matchCoord" in js and "api/match" in js
+    assert "stackElements" in js and "api/stack" in js
+    assert "renameProfile" in js and "deleteProfile" in js
+    assert "toggleHelp" in js and 'id="help"' in js
+    assert 'id="saved"' in js

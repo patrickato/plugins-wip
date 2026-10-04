@@ -16,7 +16,7 @@ const api=async(path,method='GET',body=null)=>{
   let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j
 };
 
-function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}
+function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted';if(!bad&&/✓/.test(t)){let sv=document.getElementById('saved');if(sv){sv.textContent='saved ✓';sv.className='ok'}}}
 
 async function refresh(){
   try{
@@ -78,6 +78,38 @@ function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/a
 
 // --- auto-align (server does the math) ---
 async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
+function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
+async function matchCoord(axis){
+  if(!selected){msg('select an element first',true);return}
+  let opts=otherNames();if(!opts.length){msg('no other elements',true);return}
+  let target=prompt('Match '+axis.toUpperCase()+' of which element?\n\n'+opts.join(', '));
+  if(!target)return; target=target.trim();
+  if(!S.elements[target]){msg('no element named '+target,true);return}
+  try{await api('api/match','POST',{element:selected,target,axis});await refresh();reloadPreview();msg('matched '+axis.toUpperCase()+' of '+target+' ✓')}catch(e){msg(e.message,true)}
+}
+async function stackElements(){
+  let all=S?Object.keys(S.elements).sort():[];
+  let pick=prompt('Stack which elements down a column?\nComma-separated names (top-to-bottom order is auto):\n\n'+all.join(', '),selected||'');
+  if(!pick)return;
+  let names=pick.split(',').map(x=>x.trim()).filter(Boolean);
+  if(names.length<2){msg('name at least 2 elements',true);return}
+  let bad=names.filter(n=>!S.elements[n]);if(bad.length){msg('unknown: '+bad.join(', '),true);return}
+  try{await api('api/stack','POST',{elements:names});await refresh();reloadPreview();msg('stacked '+names.length+' ✓')}catch(e){msg(e.message,true)}
+}
+async function renameProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't rename the default profile",true);return}
+  let nn=prompt('Rename profile "'+cur+'" to:');if(!nn)return;
+  try{await api('api/profile','POST',{op:'rename',name:cur,new:nn.trim()});selected=null;await refresh();reloadPreview();msg('renamed ✓')}catch(e){msg(e.message,true)}
+}
+async function deleteProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't delete the default profile",true);return}
+  if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
+  try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
+}
+function toggleHelp(){let h=document.getElementById('help');h.style.display=(h.style.display==='none'||!h.style.display)?'block':'none'}
+function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';

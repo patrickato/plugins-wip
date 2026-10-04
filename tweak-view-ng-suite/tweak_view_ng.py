@@ -547,7 +547,7 @@ def import_legacy(data):
 
 class TweakViewNG(plugins.Plugin):
     __author__ = "OpenAI + Pwnagotchi community lineage (NurseJackass/Sniffleupagus/BraedenP232)"
-    __version__ = "0.1.0-alpha7"
+    __version__ = "0.1.0-alpha8"
     __license__ = "GPL3"
     __description__ = "Safe, resolution-independent Pwnagotchi UI layout editor for Jayofelony 2.9.5.8."
 
@@ -1001,18 +1001,58 @@ class TweakViewNG(plugins.Plugin):
             return jsonify({"ok": True, "result": result})
         if path == "api/profile" and request.method == "POST":
             data = self._json_body(request)
+            op = str(data.get("op", "switch")).strip()  # switch (default) | rename | delete
             name = str(data.get("name", "")).strip()
-            if not name or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in name):
+
+            def _valid(nm):
+                return nm and not any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in nm)
+
+            profiles = self._layout.setdefault("profiles", {})
+            if op == "delete":
+                if name == "default":
+                    raise _HttpResult((jsonify({"ok": False, "error": "cannot delete the default profile"}), 400))
+                if name not in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "no such profile"}), 404))
+                self._push_history()
+                self._restore_runtime_to_originals()
+                profiles.pop(name, None)
+                if self._layout.get("active_profile") == name:
+                    self._layout["active_profile"] = "default"
+                result = self._apply_profile(redraw=True)
+                self._save()
+                return jsonify({"ok": True, "result": result, "active": self._layout["active_profile"]})
+            if op == "rename":
+                new = str(data.get("new", "")).strip()
+                if not _valid(new):
+                    raise _HttpResult((jsonify({"ok": False, "error": "invalid new profile name"}), 400))
+                if name == "default":
+                    raise _HttpResult((jsonify({"ok": False, "error": "cannot rename the default profile"}), 400))
+                if name not in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "no such profile"}), 404))
+                if new in profiles:
+                    raise _HttpResult((jsonify({"ok": False, "error": "a profile named %s already exists" % new}), 409))
+                self._push_history()
+                profiles[new] = profiles.pop(name)
+                if self._layout.get("active_profile") == name:
+                    self._layout["active_profile"] = new
+                self._save()
+                return jsonify({"ok": True, "active": self._layout["active_profile"]})
+            # default: switch to (creating if needed)
+            if not _valid(name):
                 raise _HttpResult((jsonify({"ok": False, "error": "invalid profile name"}), 400))
             self._push_history()
             self._restore_runtime_to_originals()
-            self._layout.setdefault("profiles", {}).setdefault(name, {"edits": {}, "shapes": {}})
+            profiles.setdefault(name, {"edits": {}, "shapes": {}})
             self._layout["active_profile"] = name
             result = self._apply_profile(redraw=True)
             self._save()
             return jsonify({"ok": True, "result": result})
         if path == "api/align" and request.method == "POST":
             return self._align_element(request)
+        if path == "api/match" and request.method == "POST":
+            return self._match_coordinate(request)
+        if path == "api/stack" and request.method == "POST":
+            return self._stack_elements(request)
         if path == "api/recovery/update" and request.method == "POST":
             return self._recovery_update(request)
         # Unknown mutating route - a clean 404, not a rolled-back edit.
@@ -1135,6 +1175,101 @@ class TweakViewNG(plugins.Plugin):
         self._adapter.redraw()
         return jsonify({"ok": True, "element": element, "edge": edge, "xy": new_xy})
 
+    def _apply_xy(self, element, new_xy):
+        """Set one element's xy in the active profile + runtime (caller handles
+        the transaction/history/save)."""
+        self._profile().setdefault("edits", {}).setdefault(element, {})["xy"] = new_xy
+        self._adapter.apply_properties(element, {"xy": new_xy}, self._originals)
+
+    def _match_coordinate(self, request):
+        """Match the selected element's x or y to another element's coordinate.
+
+        Body: {"element": "<name>", "target": "<other>", "axis": "x"|"y"}.
+        """
+        data = self._json_body(request)
+        element = str(data.get("element", "")).strip()
+        target = str(data.get("target", "")).strip()
+        axis = str(data.get("axis", "")).strip()
+        if not element or not target or axis not in ("x", "y"):
+            raise _HttpResult((jsonify({"ok": False, "error": "element, target and axis (x|y) required"}), 400))
+        if element == target:
+            raise _HttpResult((jsonify({"ok": False, "error": "element and target must differ"}), 400))
+        if not self._adapter.has(element):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element"}), 404))
+        if not self._adapter.has(target):
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown target"}), 404))
+        snap = self._adapter.snapshot()
+        g_el = self._xy_of(snap["elements"].get(element, {}).get("properties", {}))
+        g_tg = self._xy_of(snap["elements"].get(target, {}).get("properties", {}))
+        if g_el is None or g_tg is None:
+            raise _HttpResult((jsonify({"ok": False, "error": "both elements need a position"}), 409))
+        x, y, extra = g_el
+        tx, ty, _te = g_tg
+        if axis == "x":
+            nx, ny = tx, y
+        else:
+            nx, ny = x, ty
+        new_xy = [nx, ny] + ([nx + (extra[0] - x), ny + (extra[1] - y)] if len(extra) >= 2 else [])
+        self._push_history()
+        self._apply_xy(element, new_xy)
+        self._save()
+        self._adapter.redraw()
+        return jsonify({"ok": True, "element": element, "target": target, "axis": axis, "xy": new_xy})
+
+    def _stack_elements(self, request):
+        """Stack a set of elements evenly down a column (the vertical-space
+        feature). All elements share a common x (the first one's, or a given x)
+        and are spaced top-to-bottom with an even gap between the first and last.
+
+        Body: {"elements": ["a","b","c"], "x": <optional int>, "gap": <optional int>}.
+        With no gap, elements are evenly distributed between the current top-most
+        and bottom-most of the set; with a gap, they're stacked gap px apart from
+        the top-most.
+        """
+        data = self._json_body(request)
+        names = data.get("elements")
+        if not isinstance(names, list) or len([n for n in names if isinstance(n, str)]) < 2:
+            raise _HttpResult((jsonify({"ok": False, "error": "need at least 2 elements to stack"}), 400))
+        names = [n for n in names if isinstance(n, str)]
+        missing = [n for n in names if not self._adapter.has(n)]
+        if missing:
+            raise _HttpResult((jsonify({"ok": False, "error": "unknown element(s): %s" % ", ".join(missing)}), 404))
+        snap = self._adapter.snapshot()
+        got = {}
+        for n in names:
+            g = self._xy_of(snap["elements"].get(n, {}).get("properties", {}))
+            if g is None:
+                raise _HttpResult((jsonify({"ok": False, "error": "%s has no position" % n}), 409))
+            got[n] = g
+        # order the elements by current y so the stack keeps their visual order
+        ordered = sorted(names, key=lambda n: got[n][1])
+        xs = [got[n][0] for n in ordered]
+        ys = [got[n][1] for n in ordered]
+        col_x = data.get("x")
+        col_x = int(col_x) if isinstance(col_x, (int, float)) or (isinstance(col_x, str) and col_x.strip().lstrip("-").isdigit()) else min(xs)
+        gap = data.get("gap")
+        h = snap["screen"]["height"]
+        y0 = min(ys)
+        if gap not in (None, "") and str(gap).lstrip("-").isdigit():
+            step = int(gap)
+            targets = [y0 + step * i for i in range(len(ordered))]
+        else:
+            y1 = max(ys)
+            span = y1 - y0
+            n = len(ordered)
+            targets = [y0 if n == 1 else int(round(y0 + span * i / (n - 1))) for i in range(n)]
+        self._push_history()
+        changed = []
+        for n, ny in zip(ordered, targets):
+            x, y, extra = got[n]
+            ny = max(0, min(ny, h - 1))
+            new_xy = [col_x, ny] + ([col_x + (extra[0] - x), ny + (extra[1] - y)] if len(extra) >= 2 else [])
+            self._apply_xy(n, new_xy)
+            changed.append(n)
+        self._save()
+        self._adapter.redraw()
+        return jsonify({"ok": True, "stacked": changed, "x": col_x})
+
     # ------------------------------------------------------------------ #
     # Minimal server-rendered recovery editor (harvest item 8)
     # ------------------------------------------------------------------ #
@@ -1232,7 +1367,7 @@ class TweakViewNG(plugins.Plugin):
 
 WEB_UI = r"""
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="csrf_token" content="{{ csrf_token() }}"><title>Tweak View NG</title>
-<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move;user-select:none;-webkit-user-select:none;touch-action:none}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important}
+<style>:root{--bg:#0b0e10;--panel:#14191d;--line:#263039;--text:#d7e0e5;--dim:#83919a;--a:#5bd1ff;--ok:#79e28b;--bad:#ff6b78}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif;height:100vh;overflow:hidden}header{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line)}header b{color:var(--a);letter-spacing:.08em}.grow{flex:1}.muted{color:var(--dim);font-size:12px}button,select,input{background:#0d1114;color:var(--text);border:1px solid #34414b;border-radius:5px;padding:7px}button{cursor:pointer}button:hover{border-color:var(--a)}main{display:grid;grid-template-columns:230px 1fr 300px;height:calc(100vh - 50px)}aside,.props{background:var(--panel);overflow:auto;padding:10px}.left{border-right:1px solid var(--line)}.props{border-left:1px solid var(--line)}#elements{list-style:none;padding:0;margin:8px 0}.el{padding:7px;border:1px solid transparent;border-radius:4px;cursor:pointer}.el:hover,.el.sel{border-color:var(--a);background:#101a20}.type{display:block;color:var(--dim);font-size:11px}.stage{overflow:auto;display:flex;align-items:center;justify-content:center;padding:18px}.frame{position:relative;border:1px solid #4b5b66;background:#fff;box-shadow:0 10px 35px #0008}.frame img{display:block;image-rendering:pixelated;max-width:none}.overlay{position:absolute;inset:0;pointer-events:auto}.box{position:absolute;border:1px dashed #00a7ff;background:#00a7ff1a;min-width:5px;min-height:5px;cursor:move;user-select:none;-webkit-user-select:none;touch-action:none}.box.sel{border:2px solid #00a7ff;background:#00a7ff22}.row{display:grid;grid-template-columns:100px 1fr;gap:8px;align-items:center;margin:7px 0}.row label{color:var(--dim);font-size:12px}.actions{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.danger{border-color:#6d3037}.ok{color:var(--ok)}.err{color:var(--bad)}.helpbox{position:fixed;inset:10% 15%;background:var(--panel);border:1px solid var(--a);border-radius:8px;padding:16px 20px;overflow:auto;z-index:20;box-shadow:0 20px 60px #000a}.helpbox h3{color:var(--a);margin-top:0}.helpbox li{margin:5px 0;color:var(--text)}.helpbox b{color:var(--a)}#saved{min-width:70px;text-align:right}#saved.dirty{color:var(--bad)}#saved.ok{color:var(--ok)}@media(max-width:850px){body{overflow:auto;height:auto}header{position:sticky;top:0;z-index:5}main{display:flex;flex-direction:column;height:auto}.left,.props{border:0;border-bottom:1px solid var(--line);max-height:38vh}.stage{min-height:45vh;justify-content:flex-start}.props{max-height:none}#elements{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.el{overflow:hidden;text-overflow:ellipsis}}.box.warn{border:2px solid var(--bad)!important;background:#ff6b7822!important}
 .box.edited{border-color:var(--a)}
 .blabel{position:absolute;left:0;top:-13px;font-size:9px;line-height:1;color:var(--a);background:#0b0e10cc;padding:1px 3px;border-radius:3px;white-space:nowrap;pointer-events:none;max-width:120px;overflow:hidden;text-overflow:ellipsis}
 .zone{position:absolute;background:repeating-linear-gradient(45deg,#5bd1ff0f,#5bd1ff0f 6px,transparent 6px,transparent 12px);pointer-events:none;border-top:1px dashed #5bd1ff44;border-bottom:1px dashed #5bd1ff44}
@@ -1242,7 +1377,7 @@ button.on{border-color:var(--a);background:#101a20;color:var(--a)}
 .align-grid button{font-size:12px;padding:6px}
 .hint{color:var(--dim);font-size:11px;margin:4px 0 2px}
 </style></head>
-<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Align selected element</div><div class="align-pad"><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="row"><label>Profile</label><div><select id="profile"></select> <button onclick="newProfile()">New</button></div></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main>
+<body><header><b>TWEAK VIEW NG</b><span class="muted">{{ version }}</span><span class="grow"></span><span id="screen" class="muted"></span><span id="saved" class="muted" title="save state"></span><button id="helpBtn" onclick="toggleHelp()" title="keyboard shortcuts & help">?</button><button id="snapBtn" class="on" onclick="toggleSnap()" title="snap to lines/edges while dragging">Snap</button><button id="zoneBtn" class="on" onclick="toggleZones()" title="shade the top/bottom strips">Zones</button><button onclick="undo()">Undo</button><button onclick="redo()">Redo</button></header><main><aside class="left"><input id="search" placeholder="filter elements" style="width:100%" oninput="renderList()"><div class="actions"><button onclick="addShape('line')">+ Line</button><button onclick="addShape('rect')">+ Rect</button><button onclick="addShape('ellipse')">+ Ellipse</button></div><ul id="elements"></ul></aside><section class="stage"><div id="frame" class="frame"><img id="preview" src="/ui"><div id="overlay" class="overlay"></div></div></section><section class="props"><div id="status" class="muted">loading…</div><h3 id="title">Select an element</h3><div id="editor"></div><div class="actions"><button onclick="apply()">Apply</button><button onclick="revertEl()">Revert element</button><button class="danger" onclick="resetAll()">Reset profile</button></div><div class="hint">Tip: drag an element, or select it and use arrow keys (Shift = 10px).</div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Align selected element</div><div class="align-pad"><button onclick="alignEl('left')" title="snap to left">⇤ Left</button><button onclick="alignEl('hcenter')" title="center horizontally">↔ Center</button><button onclick="alignEl('right')" title="snap to right">Right ⇥</button><button onclick="alignEl('top')" title="snap to top of its area">⤒ Top</button><button onclick="alignEl('vcenter')" title="center vertically in its area">↕ Middle</button><button onclick="alignEl('bottom')" title="snap to bottom of its area">⤓ Bottom</button></div><div class="hint">Match another element</div><div class="align-grid"><button onclick="matchCoord('x')" title="match X of another element">Match X of…</button><button onclick="matchCoord('y')" title="match Y of another element">Match Y of…</button></div><div class="hint">Stack elements down a column</div><div class="actions"><button onclick="stackElements()" title="stack several elements evenly down a column">≡ Stack…</button></div><hr style="border:0;border-top:1px solid var(--line)"><div class="hint">Layout profile</div><div class="actions"><select id="profile" style="flex:1;min-width:90px"></select><button onclick="newProfile()" title="new profile">New</button><button onclick="renameProfile()" title="rename this profile">Rename</button><button class="danger" onclick="deleteProfile()" title="delete this profile">Del</button></div><div class="actions"><button onclick="exportCfg()">Export</button><button onclick="document.getElementById('importFile').click()">Import</button><input id="importFile" type="file" accept="application/json" hidden onchange="importCfg(this)"></div></section></main><div id="help" class="helpbox" style="display:none"><h3>Tweak View NG — editor help</h3><ul><li><b>Drag</b> a box to move it (snaps to lines/edges when <b>Snap</b> is on)</li><li><b>Arrow keys</b> nudge the selected element 1px; <b>Shift+arrow</b> = 10px</li><li><b>Align pad</b> snaps the selected element within its area</li><li><b>Match X/Y</b> lines it up with another element's exact position</li><li><b>Stack</b> spaces several elements evenly down a column</li><li><b>Red box</b> = crossing a divider line or off-screen (a warning, not a block)</li><li><b>Zones</b> shades the top/bottom strips; <b>Snap</b> toggles snapping</li><li><b>Profiles</b> keep separate named layouts (day / night / …)</li></ul><div class="actions"><button onclick="toggleHelp()">Close</button></div></div>
 <script>const CSRF=document.querySelector('meta[name=csrf_token]').content;
 let S=null,selected=null,drag=null;
 let snap=true, overlayZones=true, warnOverlap=false;
@@ -1261,7 +1396,7 @@ const api=async(path,method='GET',body=null)=>{
   let j=await r.json();if(!r.ok)throw Error(j.error||r.statusText);return j
 };
 
-function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted'}
+function msg(t,bad=false){let e=document.getElementById('status');e.textContent=t;e.className=bad?'err':'muted';if(!bad&&/✓/.test(t)){let sv=document.getElementById('saved');if(sv){sv.textContent='saved ✓';sv.className='ok'}}}
 
 async function refresh(){
   try{
@@ -1323,6 +1458,38 @@ function addShape(type){let name=prompt('Shape name');if(!name)return;api('api/a
 
 // --- auto-align (server does the math) ---
 async function alignEl(edge){if(!selected){msg('select an element first',true);return}try{await api('api/align','POST',{element:selected,edge});await refresh();reloadPreview();msg('aligned '+edge+' ✓')}catch(e){msg(e.message,true)}}
+function otherNames(){return S?Object.keys(S.elements).filter(n=>n!==selected).sort():[]}
+async function matchCoord(axis){
+  if(!selected){msg('select an element first',true);return}
+  let opts=otherNames();if(!opts.length){msg('no other elements',true);return}
+  let target=prompt('Match '+axis.toUpperCase()+' of which element?\n\n'+opts.join(', '));
+  if(!target)return; target=target.trim();
+  if(!S.elements[target]){msg('no element named '+target,true);return}
+  try{await api('api/match','POST',{element:selected,target,axis});await refresh();reloadPreview();msg('matched '+axis.toUpperCase()+' of '+target+' ✓')}catch(e){msg(e.message,true)}
+}
+async function stackElements(){
+  let all=S?Object.keys(S.elements).sort():[];
+  let pick=prompt('Stack which elements down a column?\nComma-separated names (top-to-bottom order is auto):\n\n'+all.join(', '),selected||'');
+  if(!pick)return;
+  let names=pick.split(',').map(x=>x.trim()).filter(Boolean);
+  if(names.length<2){msg('name at least 2 elements',true);return}
+  let bad=names.filter(n=>!S.elements[n]);if(bad.length){msg('unknown: '+bad.join(', '),true);return}
+  try{await api('api/stack','POST',{elements:names});await refresh();reloadPreview();msg('stacked '+names.length+' ✓')}catch(e){msg(e.message,true)}
+}
+async function renameProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't rename the default profile",true);return}
+  let nn=prompt('Rename profile "'+cur+'" to:');if(!nn)return;
+  try{await api('api/profile','POST',{op:'rename',name:cur,new:nn.trim()});selected=null;await refresh();reloadPreview();msg('renamed ✓')}catch(e){msg(e.message,true)}
+}
+async function deleteProfile(){
+  let cur=S&&S.active_profile;if(!cur)return;
+  if(cur==='default'){msg("can't delete the default profile",true);return}
+  if(!confirm('Delete profile "'+cur+'"? This cannot be undone from here.'))return;
+  try{await api('api/profile','POST',{op:'delete',name:cur});selected=null;await refresh();reloadPreview();msg('deleted ✓')}catch(e){msg(e.message,true)}
+}
+function toggleHelp(){let h=document.getElementById('help');h.style.display=(h.style.display==='none'||!h.style.display)?'block':'none'}
+function markSaved(){let e=document.getElementById('saved');if(e){e.textContent='saved ✓';e.className='ok'}}
 
 function renderProfiles(){
   let s=document.getElementById('profile');s.innerHTML='';

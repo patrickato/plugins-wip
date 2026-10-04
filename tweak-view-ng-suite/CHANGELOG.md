@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.0-alpha8
+
+Final editor polish pass (on-hardware, "complete & polished" goal).
+
+### Added
+
+- **Match X / Match Y of another element** — snap the selected element's x or
+  y to another element's exact coordinate (`api/match`).
+- **Stack elements down a column** — pick several elements and space them
+  evenly down a shared column (`api/stack`), with an optional fixed gap. This is
+  the "use the vertical space" feature (chosen over true text rotation, which
+  would need a custom rotated-text renderer and looks poor on a 1-bit TFT).
+- **Fuller profile controls** — Rename and Delete alongside New/switch; the
+  default profile is protected (`api/profile` now takes `op: switch|rename|delete`).
+- **Saved indicator** in the header and a **help overlay** (the `?` button)
+  listing drag, arrow-nudge, align, match, stack, red-box and profile behavior.
+
+### Notes
+
+- Text rotation was considered and deliberately not built: pwnagotchi's text
+  widgets draw horizontally with no rotation parameter, so it would require a
+  custom rendered-and-rotated widget that reads poorly on the mono display.
+  Vertical stacking covers the real need.
+
+## 0.1.0-alpha7
 ## 0.1.0-alpha7
 
 Fix: dragged box could freeze/detach from its element.
