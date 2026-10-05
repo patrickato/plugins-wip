@@ -1,0 +1,65 @@
+# RemoteExecNG - add this block to /etc/pwnagotchi/config.toml
+#
+# Section name is [main.plugins.remoteexec_ng], matching the plugin FILE's
+# basename (remoteexec_ng.py). This fork's loader does NOT merge __defaults__,
+# so every option is spelled out here.
+#
+# WHAT THIS IS: a small authenticated HTTP API that runs commands on THIS
+# pwnagotchi (one you own) and returns the result as JSON. It's remote admin of
+# your own device, and the agent side of the fleet-coordination layer. By
+# default it can ONLY run the named tasks you list below - it will not run
+# arbitrary shell unless you deliberately turn free mode on (two switches).
+#
+# NOTE ON ORDERING: all the scalar options come first, then the [.tasks]
+# sub-table LAST. TOML does not allow re-opening [main.plugins.remoteexec_ng]
+# after a sub-table, so keep this order.
+
+[main.plugins.remoteexec_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# >>> USER INPUT REQUIRED <<<
+# ---------------------------------------------------------------------
+# No working default. Blank/placeholder/<12 chars => the server refuses to
+# start. Generate one: python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+auth_token = ""
+
+# Exposure. "auto" (tailscale IP if present, else 127.0.0.1), "tailscale"
+# (require tailscale or refuse), "localhost", or "lan" (0.0.0.0 - explicit,
+# logged, broad). The exact URL is always logged.
+bind_scope = "auto"
+port = 8084
+
+# Command mode (SAFE by default):
+#   "tasks" (default) - the API can ONLY run the named commands in [.tasks].
+#   "free"            - run arbitrary commands, but ONLY if allow_free_mode too.
+command_mode = "tasks"
+
+# Second switch for arbitrary commands. BOTH command_mode="free" AND this true
+# are required, so free exec can never be on by accident.
+allow_free_mode = false
+
+# A hung command can't hang a request past this many seconds.
+command_timeout_seconds = 30
+# stdout/stderr longer than this are truncated (with a flag in the response).
+max_output_chars = 20000
+
+# Optional append-only JSON audit log of every command run ("" = off).
+audit_log = ""
+
+# On-screen status (optional; shows the run count on the TFT).
+ui_enabled = true
+ui_position_x = -40
+ui_position_y = 20
+
+# ---------------------------------------------------------------------
+# Named, pre-approved commands. In tasks mode these are the ONLY things that
+# can run. Edit freely; an empty table means the API runs nothing. The shipped
+# set is read-only / diagnostic. (Keep this sub-table LAST - see note above.)
+# ---------------------------------------------------------------------
+[main.plugins.remoteexec_ng.tasks]
+uptime = "uptime"
+status = "systemctl is-active pwnagotchi"
+disk = "df -h /"
+temp = "vcgencmd measure_temp"
+ip = "hostname -I"
