@@ -1,0 +1,47 @@
+# BadHID BLE NG - add this block to /etc/pwnagotchi/config.toml
+#
+# Section = file basename -> [main.plugins.badhid_ble_ng]. Loader doesn't merge
+# __defaults__, so everything is spelled out.
+#
+# WHAT THIS IS: wireless BadHID. The pi presents itself as a BLUETOOTH (BLE) HID
+# keyboard and types a payload you wrote into a device that has PAIRED with it.
+# Same DuckyScript engine + arm/auth model as the wired badhid; only the
+# transport is Bluetooth. The BLE transport needs on-device bring-up - see
+# BLE_DESIGN.md. For hardware you own or are authorized to test.
+
+[main.plugins.badhid_ble_ng]
+enabled = false
+
+# >>> USER INPUT REQUIRED <<< - no working default; blank/placeholder/<12 chars
+# means the control server refuses to start.
+auth_token = ""
+
+# Control API exposure (same semantics as the wired suite).
+bind_scope = "auto"
+port = 8085
+
+# The name the target sees when pairing.
+ble_device_name = "BadHID-KB"
+
+# Payloads: shares the wired suite's folder by default, so your whole payload
+# library works over BLE too.
+payloads_dir = "/etc/pwnagotchi/badhid_ng/payloads"
+default_payload = "hello_world.duck"
+
+# Arm model - disarmed + manual-fire by default (identical to wired).
+arm_window_seconds = 120
+arm_one_shot = true
+# Fire the default payload when a host CONNECTS (armed only). Default false.
+fire_on_connect = false
+
+# Typing timing + the stuck-modifier fix, carried over from the wired suite.
+inter_key_delay_ms = 12
+default_delay_ms = 0
+modifier_settle_ms = 40
+max_actions = 20000
+allow_quickfire = true
+
+# On-screen status (optional).
+ui_enabled = true
+ui_position_x = -55
+ui_position_y = 20
