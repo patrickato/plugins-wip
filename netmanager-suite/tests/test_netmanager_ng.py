@@ -277,6 +277,7 @@ def test_live_http():
         check("live: page serves", st == 200 and "Network Manager" in body)
         check("live: page has floating toast", 'id="toast"' in body and "function toast(" in body)
         check("live: page has first-run welcome + help", 'id="welcome"' in body and "New here?" in body)
+        check("live: page has per-row edit", "function editNet(" in body and "/api/update" in body)
         st, b = call("/api/add", {"name": "lab", "kind": "fleet", "fields": {"url": "http://x:8084", "token": "z"}})
         nid = json.loads(b)["id"]
         check("live: add ok", st == 200)
@@ -284,6 +285,13 @@ def test_live_http():
         check("live: state total 1", json.loads(b)["total"] == 1)
         st, b = call("/api/select", {"id": nid})
         check("live: select ok", json.loads(b).get("selected") == nid)
+        # edit it in place via /api/update (what the page's Edit button calls)
+        st, b = call("/api/update", {"id": nid, "name": "lab-renamed", "kind": "fleet",
+                                     "fields": {"url": "http://x:8084", "token": "z2"}})
+        check("live: update ok", st == 200 and json.loads(b).get("ok") is True)
+        st, b = call("/api/state")
+        updated = next((n for n in json.loads(b)["networks"] if n["id"] == nid), {})
+        check("live: update persisted", updated.get("name") == "lab-renamed" and updated.get("fields", {}).get("token") == "z2")
         # fleet fire runs a REAL probe; the dummy agent is unreachable -> ok:false, no stub
         st, b = call("/api/fire", {"id": nid})
         fr = json.loads(b)

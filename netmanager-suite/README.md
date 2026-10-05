@@ -98,7 +98,8 @@ Built so a **brand-new user** can land on it and get going without reading docs:
   leads), each a tap away; the Add form's fields adapt to the kind.
 - Each row: name, kind badge, key fields, a **• here** marker when it matches the
   WiFi you're currently on, a **✓ selected** marker, and **Select / Fire Test /
-  Delete** buttons.
+  Edit / Delete** buttons. **Edit** opens the form pre-filled (you can even change
+  the kind) and saves in place — no more delete-and-re-add to fix one field.
 - Dependency-free (vanilla JS) so it works on an offline pi; the token comes
   from the page's own `?token=` link.
 
@@ -120,6 +121,18 @@ sudo systemctl restart pwnagotchi
 Authorization stays in config (a deliberate, `sudo` action) — on purpose. The web
 page never edits the allowlist itself. **Only add networks you own or are
 explicitly authorized to test.**
+
+**One-command helper (no TOML editing).** `netmanagerctl.sh` (installed next to the
+QR helper) edits the allowlist safely — section-scoped, deduped (BSSID matching is
+colon- and case-insensitive), config backed up and auto-rolled-back if the edit
+wouldn't parse — then restarts pwnagotchi:
+
+```bash
+sudo /etc/pwnagotchi/netmanager_ng/netmanagerctl.sh authorize 00:11:22:33:44:55 MyLabAP
+sudo /etc/pwnagotchi/netmanager_ng/netmanagerctl.sh list
+sudo /etc/pwnagotchi/netmanager_ng/netmanagerctl.sh deauthorize MyLabAP
+```
+Add `NO_RESTART=1` to edit without the restart.
 
 ---
 

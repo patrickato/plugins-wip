@@ -576,7 +576,7 @@ def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=
 
 class NetManagerNG(plugins.Plugin):
     __author__ = "built for this project's network-manager track"
-    __version__ = "0.2.0"
+    __version__ = "0.3.0"
     __license__ = "GPL3"
     __description__ = ("Phone-friendly Network Manager: a searchable, 50+-scale "
                        "list of your networks/targets with add/edit/delete, a "
@@ -967,6 +967,7 @@ _PAGE = r"""<!doctype html>
 
 <details class="add" id="addbox">
   <summary><b>Add a network manually</b></summary>
+  <div id="editbanner" class="muted" style="display:none"></div>
   <input type="text" id="a_name" placeholder="name (required)">
   <select id="a_kind" onchange="kindFields()">
     <option value="wifi_join">wifi I join</option>
@@ -977,7 +978,8 @@ _PAGE = r"""<!doctype html>
   <div class="kf" data-k="fleet"><input type="text" id="f_url" placeholder="agent URL e.g. http://10.0.0.5:8084"><input type="text" id="f_token" placeholder="agent token"><input type="text" id="f_badhid" placeholder="BadHID URL (optional) e.g. http://10.0.0.5:8083"><input type="text" id="f_btok" placeholder="BadHID token (optional)"></div>
   <div class="kf" data-k="wifi_target"><input type="text" id="f_tssid" placeholder="SSID"><input type="text" id="f_tbssid" placeholder="BSSID (optional)"></div>
   <input type="text" id="a_notes" placeholder="notes (optional)">
-  <button onclick="addNet()">Add</button>
+  <button id="savebtn" onclick="saveNet()">Add</button>
+  <button id="cancelbtn" onclick="cancelEdit()" style="display:none">Cancel edit</button>
 </details>
 
 <details class="add" id="importbox">
@@ -1045,6 +1047,7 @@ function render(){
       "<div class='right acts'>"+
       "<button onclick=\"sel('"+e.id+"')\">Select</button>"+
       "<button class='fire' onclick=\"fire('"+e.id+"')\">Fire Test</button>"+
+      "<button onclick=\"editNet('"+e.id+"')\">Edit</button>"+
       "<button onclick=\"delNet('"+e.id+"','"+esc(e.name).replace(/'/g,"")+"')\">Delete</button>"+
       "</div></div>";
   }).join("");
@@ -1061,12 +1064,43 @@ function gatherFields(){
   return f;
 }
 function val(id){ return document.getElementById(id).value.trim(); }
+function setv(id,v){ document.getElementById(id).value = v||""; }
 function entryById(id){ return (STATE.networks||[]).find(e=>e.id===id) || null; }
-async function addNet(){
+
+const FORM_IDS = ["a_name","a_notes","f_ssid","f_bssid","f_url","f_token","f_badhid","f_btok","f_tssid","f_tbssid"];
+let EDIT_ID = null;
+function clearForm(){ FORM_IDS.forEach(i=>setv(i,"")); }
+function cancelEdit(){
+  EDIT_ID = null; clearForm();
+  document.getElementById("savebtn").textContent = "Add";
+  document.getElementById("cancelbtn").style.display = "none";
+  document.getElementById("editbanner").style.display = "none";
+}
+function editNet(id){
+  const e = entryById(id); if(!e){ toast("can't find that one — reloading.","err"); load(); return; }
+  EDIT_ID = id;
+  const f = e.fields||{};
+  setv("a_name", e.name); document.getElementById("a_kind").value = e.kind; kindFields();
+  if(e.kind==="wifi_join"){ setv("f_ssid",f.ssid); setv("f_bssid",f.bssid); }
+  if(e.kind==="fleet"){ setv("f_url",f.url); setv("f_token",f.token); setv("f_badhid",f.badhid_url); setv("f_btok",f.badhid_token); }
+  if(e.kind==="wifi_target"){ setv("f_tssid",f.ssid); setv("f_tbssid",f.bssid); }
+  setv("a_notes", e.notes);
+  const b = document.getElementById("editbanner");
+  b.textContent = "Editing “"+e.name+"” — change what you need, then Save. Tip: changing the kind is allowed.";
+  b.style.display = "block";
+  document.getElementById("savebtn").textContent = "Save changes";
+  document.getElementById("cancelbtn").style.display = "";
+  document.getElementById("addbox").open = true;
+  document.getElementById("addbox").scrollIntoView({behavior:"smooth", block:"center"});
+}
+async function saveNet(){
   const name=val("a_name"); if(!name){ toast("Name is required.","err"); return; }
-  const r = await api("/api/add", {name, kind:document.getElementById("a_kind").value, notes:val("a_notes"), fields:gatherFields()});
-  if(r.ok){ ["a_name","a_notes","f_ssid","f_bssid","f_url","f_token","f_badhid","f_btok","f_tssid","f_tbssid"].forEach(i=>document.getElementById(i).value=""); document.getElementById("addbox").open=false; toast("Added “"+name+"”.","ok"); await load(); }
-  else toast("Add failed: "+(r.error||"?"),"err");
+  const body = {name, kind:document.getElementById("a_kind").value, notes:val("a_notes"), fields:gatherFields()};
+  const editing = EDIT_ID;
+  if(editing) body.id = editing;
+  const r = await api(editing ? "/api/update" : "/api/add", body);
+  if(r.ok){ cancelEdit(); document.getElementById("addbox").open=false; toast((editing?"Updated “":"Added “")+name+"”.","ok"); await load(); }
+  else toast((editing?"Update":"Add")+" failed: "+(r.error||"?"),"err");
 }
 async function sel(id){ const r=await api("/api/select",{id}); if(r.ok){ const e=entryById(id); toast("Selected “"+((e&&e.name)||"")+"”.","ok"); await load(); } else toast(r.error||"select failed","err"); }
 async function delNet(id,name){ if(!confirm("Delete “"+name+"”?")) return; const r=await api("/api/delete",{id}); if(r.ok){ toast("Deleted “"+name+"”.","ok"); await load(); } else toast(r.error||"delete failed","err"); }
