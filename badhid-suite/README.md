@@ -288,6 +288,7 @@ Run **`sudo ./badhid_doctor.sh`** first — it pinpoints the broken link. Common
 | fire error: "HID device not accepting input" | Pi isn't plugged into a powered, awake, enumerated target | plug into the target; wake it; check the cable |
 | characters dropped/garbled on the target | host too slow for the type speed | raise `inter_key_delay_ms` (e.g. 15–25) |
 | a modifier "sticks" (Win+R turns typing into Win+key shortcuts, Explorer opens, etc.) | host missed the modifier release | raise `modifier_settle_ms` (e.g. 60–80); streams already lead and end with a keys-up report |
+| `Win+R → notepad` fails with a missing-DLL error (e.g. `Microsoft.UI.Windowing.Core.dll`) but Notepad opens fine from the Start menu | some Win11 installs have a broken `notepad.exe` redirect — launching the Store Notepad via its exe bypasses app activation, so it can't find its runtime DLLs | not a BadHID issue. On that PC: Settings → Apps → Advanced app settings → **App execution aliases** → toggle **Notepad** off then on. Or just open Notepad yourself and fire a type-only payload (open the editor, focus it, fire `hello_world.duck` from your phone so focus isn't stolen). Other PCs are unaffected. |
 | wrong symbols typed | non-US keyboard layout on the target | US layout only for now |
 | lost `usb0` after the gadget came up | expected if you used composite on an ethernet-managed Pi | you manage over ethernet; or `--teardown`, or reboot |
 | want it all gone | — | `sudo ./badhid_restore.sh` (add `--reboot` to fully clear the gadget) |
