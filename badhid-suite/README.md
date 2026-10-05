@@ -7,8 +7,18 @@ are authorized to test**. It's the A1+A2 slice of the
 `BADUSB_AND_REMOTE_EXEC_IDEAS` backlog: the USB-gadget layer + a
 DuckyScript-subset runner.
 
-New to this? Read **"How it works in one minute"** then **"Quickstart"**. The
-`badhid_doctor.sh` script will hold your hand the whole way.
+New to this and just want it to work? **One command does everything:**
+
+```bash
+sudo ./badhid_setup.sh
+```
+
+It checks your board, turns on USB gadget mode, brings up the keyboard, enables
+the plugin, offers phone access, and shows you how to fire — in plain language,
+asking before anything risky, and **safe to re-run** after the one reboot it
+needs. That's the whole setup. Everything below is the same steps by hand, plus
+reference. If you ever get stuck, `sudo ./badhid_doctor.sh` tells you the one
+next thing to do.
 
 ---
 
@@ -39,10 +49,31 @@ payloads. You write your own, for your own gear.
 
 ---
 
-## Quickstart (Pi 4, the common case)
+## Quickstart — the one-command way (recommended)
 
 Everything runs on the Pi. You stay reachable over ethernet/Wi-Fi the whole
 time, so you can't lock yourself out.
+
+```bash
+# get the files onto the pi
+cd ~/plugins-wip && git pull || git clone https://github.com/patrickato/plugins-wip ~/plugins-wip
+cd ~/plugins-wip/badhid-suite
+
+# the guided wizard does the rest (installs, enables gadget mode, brings up the
+# keyboard, enables the plugin, offers phone access). It needs ONE reboot in the
+# middle and tells you exactly when — then you run it again and it finishes.
+sudo ./badhid_setup.sh
+```
+
+When it finishes it prints how to fire your first harmless demo (and, if you
+said yes to phone access, a QR code to scan). Done.
+
+To get the phone QR again at any time: **`sudo ./badhid_phone.sh`** (add `--fix`
+if it says the page isn't reachable from your phone yet).
+
+---
+
+## Quickstart — by hand (if you'd rather do each step yourself)
 
 ```bash
 # 0) get the files onto the pi
@@ -71,6 +102,8 @@ sudo ./badhid_doctor.sh                        # should be all green except "ena
 #    very end if badhid_install.sh added it). Then restart.
 sudo nano /etc/pwnagotchi/config.toml
 sudo systemctl restart pwnagotchi
+#    (don't want to hand-edit TOML? this sets it safely, only in badhid's block:)
+#    sudo python3 badhid_setopt.py /etc/pwnagotchi/config.toml enabled true
 
 # 5) fire a harmless demo at the machine the Pi is plugged into
 sudo ./badhidctl.sh arm
@@ -90,6 +123,9 @@ what to do next.
 
 | Script | What it does | Reversible? |
 |---|---|---|
+| `badhid_setup.sh` | **The guided wizard.** Walks you from nothing to fireable, doing each step and explaining it. Asks before anything risky; safe to re-run after the reboot | each step it runs is individually reversible (see below) |
+| `badhid_phone.sh` | Show the phone one-tap URL + a scannable **QR code**; `--fix` makes the page phone-reachable (`bind_scope=lan`) and restarts | sets bind_scope back with `badhid_setopt.py` |
+| `badhid_setopt.py` | Safely set **one** option inside the `[main.plugins.badhid_ng]` block only (so you never hand-edit TOML); refuses if the result wouldn't parse | edit again / `badhid_restore.sh` |
 | `badhid_install.sh` | Backup + install plugin/payloads + add config block (random token, `enabled=false`), with config auto-rollback | `badhid_restore.sh` |
 | `badhid_doctor.sh` | **Read-only** health check of the whole chain; prints the one next step | n/a |
 | `badhid_update.sh` | After a `git pull`: copy the updated plugin + payloads into place and restart (a pull only updates the clone) | n/a |

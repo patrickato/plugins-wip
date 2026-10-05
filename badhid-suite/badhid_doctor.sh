@@ -18,6 +18,7 @@ todo() { echo "  [TODO] $1"; [ -z "$NEXT" ] && NEXT="$2"; }
 info() { echo "         $1"; }
 
 echo "===== BadHID doctor ====="
+echo "  (tip: 'sudo ./badhid_setup.sh' can just do all of the below for you)"
 
 # 1. board
 MODEL="$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')"; MODEL="${MODEL:-unknown}"
