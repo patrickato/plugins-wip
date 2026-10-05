@@ -78,6 +78,30 @@ DuckyScript-subset runner.
    shows the control URL at WARNING, e.g.
    `[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
 
+## Which Pis this works on
+
+The **plugin** is board-independent. The **keystroke hardware** needs a USB port
+that can act as a device, which not every Pi has — see **COMPATIBILITY.md** for
+the full matrix. Short version: **Pi Zero / Zero 2 W, Pi 4, Pi 3A+** work; **Pi 5**
+is experimental; **Pi 3B/3B+, Pi 400, Pi 1/2 can't** (power-only USB port).
+`enable_dwc2.sh` auto-detects the board and tells you which case you're in.
+
+## Powering it in the field (no laptop)
+
+The gadget doesn't care how the Pi is powered — only that its **device port** is
+cabled to the target. So you can run off a **UPS HAT or power bank** and use the
+data port purely for the target:
+
+- **Pi 4:** power via a GPIO **UPS HAT** (e.g. Waveshare UPS 3S) or 5V GPIO power
+  bank → the USB-C port becomes a pure data link. Cable: USB-C (Pi) → USB-A
+  (target). Plug in, arm from your phone, fire. No laptop needed.
+- **Pi Zero:** power the **PWR** micro-USB from a bank, data via the **USB** (OTG)
+  micro-USB → target.
+
+A **data-only / charge-blocked cable** is the clean choice when you're also on a
+UPS, so the Pi and target don't both push 5V down the line (usually harmless, but
+tidy). See COMPATIBILITY.md for the cable details.
+
 ## Safe install & full restore (recommended)
 
 Three helper scripts make the install reversible. Run them from inside this

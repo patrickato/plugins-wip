@@ -1,77 +1,103 @@
 #!/bin/bash
-# enable_dwc2.sh - put the Pi 4's USB-C port into gadget-capable mode so a USB
+# enable_dwc2.sh - put the Pi's USB OTG port into gadget-capable mode so a USB
 # Device Controller (UDC) appears, which badhid needs. Run ON the pi.
 #
-# It edits ONE devicetree line in config.txt:
-#     dtoverlay=dwc2,dr_mode=host   ->   dtoverlay=dwc2,dr_mode=otg
-# (or adds `dtoverlay=dwc2,dr_mode=otg` if no dwc2 overlay exists). That change
-# only takes effect after a REBOOT. config.txt is backed up first, and the exact
-# diff is shown. Fully reversible (restore the backup, reboot).
+# It AUTO-DETECTS the board and does the right thing:
+#   * Gadget-capable boards (Pi Zero/Zero W/Zero 2 W, Pi 4/4B, Pi 3A+): ensures
+#       dtoverlay=dwc2,dr_mode=otg in config.txt (fixing a stale dr_mode=host).
+#   * Pi 5: sets the same overlay but warns gadget support is experimental.
+#   * Power-only boards (Pi 3B/3B+, Pi 400, Pi 1/2): refuses with a clear reason
+#       (their USB port physically cannot act as a device) unless --force.
+# The change only takes effect after a REBOOT. config.txt is backed up first and
+# the diff is shown. Fully reversible: sudo ./enable_dwc2.sh --revert && reboot.
 #
-#   dr_mode meanings:
-#     host       - USB-C only acts as a host (devices plug INTO it). No gadget.
-#     peripheral - USB-C only acts as a device/gadget (deterministic). No host.
-#     otg        - auto: device when plugged into a host PC, host with an OTG
-#                  cable. Recommended for badhid - gadget when you need it,
-#                  without giving up host capability.
+#   dr_mode: host=device-in only (no gadget) | peripheral=device only |
+#            otg=auto (device when plugged into a host, host with an OTG cable).
+#            otg is the default here - gadget when you need it, host still works.
 #
 # Usage:
-#   sudo ./enable_dwc2.sh            # set dr_mode=otg (recommended)
-#   sudo ./enable_dwc2.sh peripheral # force device-only mode instead
+#   sudo ./enable_dwc2.sh            # auto-detect, set dr_mode=otg (recommended)
+#   sudo ./enable_dwc2.sh peripheral # force device-only mode
+#   sudo ./enable_dwc2.sh --force    # proceed even on a board flagged incapable
 #   sudo ./enable_dwc2.sh --revert   # restore the most recent backup
 #
 # Env override: CONFIG_TXT=/path/to/config.txt
 
 set -euo pipefail
 
-# Find config.txt (Bookworm/jayofelony: /boot/firmware/config.txt; older: /boot)
-if [ -n "${CONFIG_TXT:-}" ]; then
-  CFG="$CONFIG_TXT"
-elif [ -f /boot/firmware/config.txt ]; then
-  CFG=/boot/firmware/config.txt
-elif [ -f /boot/config.txt ]; then
-  CFG=/boot/config.txt
-else
-  echo "ERROR: couldn't find config.txt (looked in /boot/firmware and /boot)." >&2
-  exit 1
-fi
+if [ -n "${CONFIG_TXT:-}" ]; then CFG="$CONFIG_TXT"
+elif [ -f /boot/firmware/config.txt ]; then CFG=/boot/firmware/config.txt
+elif [ -f /boot/config.txt ]; then CFG=/boot/config.txt
+else echo "ERROR: couldn't find config.txt (/boot/firmware or /boot)." >&2; exit 1; fi
 
-MODE="otg"
-REVERT=0
+MODE="otg"; REVERT=0; FORCE=0
 for a in "$@"; do
   case "$a" in
     otg|peripheral) MODE="$a" ;;
+    --force) FORCE=1 ;;
     --revert) REVERT=1 ;;
-    *) echo "Unknown arg: $a (use otg | peripheral | --revert)"; exit 2 ;;
+    *) echo "Unknown arg: $a (use otg | peripheral | --force | --revert)"; exit 2 ;;
   esac
 done
 
 BK="$CFG.badhid.bak"
 
 if [ "$REVERT" = "1" ]; then
-  if [ -f "$BK" ]; then
-    cp -a "$BK" "$CFG"
-    echo "Reverted $CFG from $BK. Reboot to apply:  sudo reboot"
-  else
-    echo "No backup found at $BK - nothing to revert."
-  fi
+  if [ -f "$BK" ]; then cp -a "$BK" "$CFG"; echo "Reverted $CFG. Reboot to apply: sudo reboot"
+  else echo "No backup at $BK - nothing to revert."; fi
   exit 0
 fi
 
-# Back up once (don't clobber an earlier pre-change backup).
+# --- board detection --------------------------------------------------------
+MODEL="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo unknown)"
+echo "Board: $MODEL"
+
+CAP="unknown"   # capable | experimental | incapable | unknown
+# NOTE: order matters - "Pi 400" and "Pi 3 Model B" contain the substrings
+# "Pi 4"/"Pi 3", so the incapable/specific cases MUST be tested first.
+case "$MODEL" in
+  *"Pi 400"*)                       CAP="incapable" ;; # USB-C power-only
+  *"Pi 3 Model B"*)                 CAP="incapable" ;; # micro-USB power-only
+  *"Pi 2 Model"*|*"Pi Model B"*|*"Pi Model A"*) CAP="incapable" ;;
+  *"Pi 5"*)                         CAP="experimental" ;;
+  *"Pi Zero"*)                      CAP="capable" ;;   # micro-USB OTG
+  *"Pi 3 Model A"*|*"Pi 3A"*)       CAP="capable" ;;   # OTG
+  *"Pi 4"*)                         CAP="capable" ;;   # USB-C OTG
+  *"Compute Module"*)               CAP="capable" ;;   # CM USB OTG (header)
+  *)                                CAP="unknown" ;;
+esac
+
+case "$CAP" in
+  capable)      echo "USB gadget: supported on this board." ;;
+  experimental) echo "USB gadget: EXPERIMENTAL on the Pi 5 - the power port can do"
+                echo "            USB2 peripheral mode but support is newer/fiddlier."
+                echo "            Proceeding; if no UDC appears after reboot, this board"
+                echo "            may need a firmware update or isn't ready for it yet." ;;
+  incapable)    echo "USB gadget: NOT POSSIBLE on this board - its USB port is power-only"
+                echo "            (data runs through an onboard hub / no device controller)."
+                echo "            badhid's HID injection needs a device-capable port, so"
+                echo "            this board can't do the keystroke part."
+                if [ "$FORCE" != "1" ]; then
+                  echo "            Refusing (nothing changed). Re-run with --force only if you"
+                  echo "            know this specific board has an OTG port."
+                  exit 1
+                fi
+                echo "            --force given; proceeding anyway at your request." ;;
+  unknown)      echo "USB gadget: couldn't classify this board; attempting the standard"
+                echo "            dwc2 overlay. If no UDC appears after reboot, it likely"
+                echo "            doesn't have a device-capable port." ;;
+esac
+
+# --- edit config.txt --------------------------------------------------------
 [ -f "$BK" ] || cp -a "$CFG" "$BK"
 echo "Backup: $BK"
 
 BEFORE="$(grep -n 'dtoverlay=dwc2' "$CFG" || true)"
-
 if grep -q '^[[:space:]]*dtoverlay=dwc2' "$CFG"; then
-  # Replace the whole dwc2 overlay line with a normalized one.
   sed -i -E "s|^[[:space:]]*dtoverlay=dwc2.*|dtoverlay=dwc2,dr_mode=$MODE|" "$CFG"
 else
-  # No dwc2 overlay: append one (under [all] if present, else EOF).
   printf '\n# added by enable_dwc2.sh for badhid gadget mode\ndtoverlay=dwc2,dr_mode=%s\n' "$MODE" >> "$CFG"
 fi
-
 AFTER="$(grep -n 'dtoverlay=dwc2' "$CFG" || true)"
 
 echo "---- change ----"
@@ -79,22 +105,18 @@ echo "before: ${BEFORE:-'(no dwc2 line)'}"
 echo "after : ${AFTER}"
 echo "----------------"
 
-# Sanity: config.txt is line-based, so just confirm the line is present/correct.
 if grep -q "^dtoverlay=dwc2,dr_mode=$MODE" "$CFG"; then
-  echo "OK: dtoverlay=dwc2,dr_mode=$MODE is set in $CFG"
+  echo "OK: dtoverlay=dwc2,dr_mode=$MODE set in $CFG"
 else
-  echo "!!! edit didn't land as expected - restoring backup."
-  cp -a "$BK" "$CFG"
-  exit 1
+  echo "!!! edit didn't land as expected - restoring backup."; cp -a "$BK" "$CFG"; exit 1
 fi
 
 echo ""
 echo "=============================================================="
-echo " REBOOT REQUIRED for this to take effect:   sudo reboot"
-echo " You're on ethernet, so SSH will drop briefly and come back."
+echo " REBOOT REQUIRED:   sudo reboot      (ethernet/wifi SSH survives)"
 echo " After reboot, confirm a controller appeared:"
-echo "     ls /sys/class/udc     # should list something now"
-echo " Then bring up the gadget:"
+echo "     ls /sys/class/udc        # should list something now"
+echo " Then bring up the keyboard gadget:"
 echo "     cd ~/plugins-wip/badhid-suite && sudo ./setup_composite_gadget.sh --hid-only"
-echo " To undo this change:   sudo ./enable_dwc2.sh --revert && sudo reboot"
+echo " Undo this change:   sudo ./enable_dwc2.sh --revert && sudo reboot"
 echo "=============================================================="
