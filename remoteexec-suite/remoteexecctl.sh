@@ -19,9 +19,16 @@ blk() {  # print only the [main.plugins.remoteexec_ng] block (section-bounded)
 }
 
 TOKEN="${REMOTEEXEC_TOKEN:-}"
-[ -z "$TOKEN" ] && [ -f "$TOKEN_FILE" ] && TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
-[ -z "$TOKEN" ] && TOKEN="$(blk | grep -m1 '^[[:space:]]*auth_token' | cut -d'"' -f2 || true)"
-[ -n "$TOKEN" ] || { echo "ERROR: no token found. Set REMOTEEXEC_TOKEN=... or ensure $TOKEN_FILE exists." >&2; exit 1; }
+# The token file is root-only by design. If it exists but we can't read it,
+# that's almost always "ran without sudo" - say so plainly instead of leaking a
+# raw shell 'Permission denied'.
+if [ -z "$TOKEN" ] && [ -f "$TOKEN_FILE" ] && [ ! -r "$TOKEN_FILE" ]; then
+  echo "ERROR: $TOKEN_FILE is root-only - re-run with sudo:  sudo $0 $*" >&2
+  exit 1
+fi
+[ -z "$TOKEN" ] && [ -r "$TOKEN_FILE" ] && TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+[ -z "$TOKEN" ] && [ -r "$CONFIG" ] && TOKEN="$(blk | grep -m1 '^[[:space:]]*auth_token' | cut -d'"' -f2 || true)"
+[ -n "$TOKEN" ] || { echo "ERROR: no token found. Run with sudo, or set REMOTEEXEC_TOKEN=..." >&2; exit 1; }
 
 PORT="$(blk | grep -m1 '^[[:space:]]*port' | tr -dc '0-9')"; PORT="${PORT:-8084}"
 URL="${REMOTEEXEC_URL:-http://127.0.0.1:$PORT}"
