@@ -140,28 +140,46 @@ sudo ./badhidctl.sh disarm
 ```
 It reads your token from `/etc/pwnagotchi/badhid_ng/auth_token.txt` automatically.
 
-### The web page / phone — one-tap fire
-The plugin serves a **mobile-friendly control page** with a **one-tap FIRE
-button per payload**. To open it, put your token in the URL:
+### Phone / web — one-tap fire (step by step)
+The plugin serves a **mobile-friendly control page** with a **FIRE button per
+payload** — one tap arms *and* fires (token-gated). Firing from your phone also
+means you don't steal focus on the target, so plain-text payloads land where you
+want them.
 
-```
-http://<pi-address>:8083/?token=YOUR_TOKEN
-```
+**1. Make the server reachable from your phone.** It defaults to the least-
+exposed address, so pick one:
+   - **Tailscale (most private, recommended):** set `bind_scope = "tailscale"`
+     (or `"auto"`). The pwnagotchi log prints the exact URL,
+     `http://100.x.y.z:8083/`. Your phone must be on the same tailnet.
+   - **Plain LAN (quickest):** set `bind_scope = "lan"`. Reachable at
+     `http://<pi-lan-ip>:8083/` from anything on your network.
 
-- The token rides along in every button, so taps work with no extra steps.
-- **One-tap = arm + fire** in a single press (`allow_quickfire = true`, the
-  default). Set `allow_quickfire = false` to force the two-step ARM-then-FIRE on
-  the page too.
-- **To reach it from your phone**, the server must be on an address your phone
-  can hit. Easiest and safest is **Tailscale** (`bind_scope = "auto"` or
-  `"tailscale"`) — the log prints the exact `http://100.x.y.z:8083/` URL. Or set
-  `bind_scope = "lan"` to expose it on your LAN at `http://<pi-lan-ip>:8083/`
-  (less private — anyone on the network who has the token can reach it).
-- Bookmark the full `?token=` URL on your phone's home screen for true one-tap.
+   Then restart: `sudo systemctl restart pwnagotchi && sleep 20`
 
-Heads-up: putting the token in the URL means it shows in browser history. For a
-lab tool on your own network that's a fair trade for one-tap; use Tailscale and
-don't share the link.
+**2. Get the Pi's address and your token (on the Pi):**
+   ```bash
+   hostname -I | awk '{print $1}'                      # the LAN IP
+   cat /etc/pwnagotchi/badhid_ng/auth_token.txt        # your token
+   ```
+   (For Tailscale, use the `100.x.y.z` URL from the log instead of the LAN IP.)
+
+**3. Open this on your phone's browser:**
+   ```
+   http://<pi-address>:8083/?token=<your-token>
+   ```
+   You'll get the control page: arm state, ARM/DISARM, and a **FIRE** button for
+   every payload. Tap one — that's the whole thing.
+
+**4. Bookmark it** to your phone's home screen for a true one-tap launcher.
+
+**Options & notes:**
+   - `allow_quickfire = true` (default): one tap = arm **+** fire. Set it
+     `false` to force the two-step (ARM first, then each FIRE needs you armed).
+   - The token rides in a hidden field on every button, so no extra steps.
+   - **Security:** `lan` means anyone on your network who *also* has the token
+     can reach it, and the token sits in the URL/browser history. For a home lab
+     that's a fair trade for one-tap; Tailscale keeps it off the LAN entirely.
+     Don't share the `?token=` link.
 
 ### On the Pi's screen
 With `ui_enabled = true` a small **`BadHID`** indicator shows on the TFT:

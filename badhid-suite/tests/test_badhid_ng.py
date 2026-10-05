@@ -311,6 +311,62 @@ def test_write_timeout_option():
     check("write_timeout override honored", p2._opt_int("write_timeout_seconds", 10) == 3)
 
 
+def test_http_oneclick_flow():
+    # End-to-end of the phone/web control path, with the device write mocked.
+    # Requires flask; skip cleanly if it isn't importable in this sandbox.
+    try:
+        from flask import Flask, request  # noqa: F401
+    except Exception:
+        check("flask available for http flow test (skipped)", True)
+        return
+    tmp = tempfile.mkdtemp()
+    with open(os.path.join(tmp, "welcome.duck"), "w") as fh:
+        fh.write("STRING hi\nENTER\n")
+    p = make_plugin(auth_token="a-long-enough-token-xyz", payloads_dir=tmp,
+                    allow_quickfire=True, arm_one_shot=True)
+    written = []
+    p._write_stream = lambda stream: written.append(list(stream))
+    app = Flask(__name__)
+    TOK = "a-long-enough-token-xyz"
+
+    # wrong token -> 401 on quickfire
+    with app.test_request_context("/quickfire", method="POST",
+                                  data={"token": "nope", "payload": "welcome.duck"}):
+        r = p._http_quickfire()
+        check("quickfire rejects wrong token (401)", getattr(r, "status_code", None) == 401)
+    check("no write on bad-token quickfire", written == [])
+
+    # correct token -> one-tap arms AND fires
+    with app.test_request_context("/quickfire", method="POST",
+                                  data={"token": TOK, "payload": "welcome.duck", "target": "phone"}):
+        p._http_quickfire()
+    check("quickfire wrote keystrokes (armed+fired in one tap)", len(written) == 1)
+    check("quickfire one-shot disarmed afterwards", not p.is_armed())
+
+    # two-step: /fire without arming is refused, /arm then /fire works
+    written.clear()
+    with app.test_request_context("/fire", method="POST",
+                                  data={"token": TOK, "payload": "welcome.duck"}):
+        p._http_fire()
+    check("fire-without-arm writes nothing", written == [])
+    with app.test_request_context("/arm", method="POST", data={"token": TOK}):
+        p._http_arm()
+    check("arm via http sets armed", p.is_armed())
+    with app.test_request_context("/fire", method="POST",
+                                  data={"token": TOK, "payload": "welcome.duck"}):
+        p._http_fire()
+    check("fire after arm writes keystrokes", len(written) == 1)
+
+    # quickfire disabled -> refused even with good token
+    p2 = make_plugin(auth_token=TOK, payloads_dir=tmp, allow_quickfire=False)
+    w2 = []
+    p2._write_stream = lambda s: w2.append(s)
+    with app.test_request_context("/quickfire", method="POST",
+                                  data={"token": TOK, "payload": "welcome.duck"}):
+        p2._http_quickfire()
+    check("quickfire honors allow_quickfire=false", w2 == [])
+
+
 def test_shipped_payloads():
     pdir = os.path.join(HERE, "..", "payloads")
     files = sorted(f for f in os.listdir(pdir) if f.endswith(".duck"))
@@ -346,6 +402,7 @@ def main():
     test_payload_path_safety()
     test_ui_hooks_safe()
     test_write_timeout_option()
+    test_http_oneclick_flow()
     test_shipped_payloads()
 
     print()
