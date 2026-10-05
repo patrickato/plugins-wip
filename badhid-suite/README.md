@@ -92,6 +92,7 @@ what to do next.
 |---|---|---|
 | `badhid_install.sh` | Backup + install plugin/payloads + add config block (random token, `enabled=false`), with config auto-rollback | `badhid_restore.sh` |
 | `badhid_doctor.sh` | **Read-only** health check of the whole chain; prints the one next step | n/a |
+| `badhid_update.sh` | After a `git pull`: copy the updated plugin + payloads into place and restart (a pull only updates the clone) | n/a |
 | `enable_dwc2.sh` | Put the USB port in gadget mode (`dr_mode=otg`); board-aware; **needs reboot** | `enable_dwc2.sh --revert` |
 | `setup_composite_gadget.sh` | Bring up the USB keyboard gadget (`/dev/hidg0`). `--hid-only` (keyboard only) or default (keyboard + USB net). Runtime only — a reboot clears it | `--teardown` |
 | `badhidctl.sh` | Friendly control: `status / list / arm / disarm / fire` (reads your token automatically) | n/a |
@@ -119,12 +120,13 @@ sketchy-*looking* — each of which only types text, opens an app, or runs a
 The Windows demos use **Win+R (Run)**; each file's header has the macOS/Linux
 tweak. The plain ones work on any OS if you focus a text field first.
 
-> **After a `git pull` that adds/changes payloads**, copy them into the live
-> folder the plugin reads (a pull only updates the repo clone):
+> **After a `git pull`** (new plugin code and/or payloads), make it take effect:
 > ```bash
-> sudo ./badhid_sync.sh
+> sudo ./badhid_update.sh      # copies plugin + payloads into place, restarts
 > ```
-> They're picked up immediately — no restart needed.
+> A `git pull` only updates the repo clone, not the live install. Use
+> `badhid_update.sh` for code+payloads (restarts), or `badhid_sync.sh` for just
+> payloads (no restart needed).
 
 ---
 
