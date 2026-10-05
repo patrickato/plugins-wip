@@ -81,24 +81,57 @@ Each import reports `+N added, M already there`.
 
 ## The page
 
+Built so a **brand-new user** can land on it and get going without reading docs:
+
+- A **"New here?"** panel at the top explains, in plain language, what the page is
+  and the three kinds (wifi I join / fleet / wifi target) and what each **Fire
+  Test** does.
+- A **first-run welcome** box: when your list is empty, the two **Bulk import**
+  buttons are front-and-center (`① handshakes`, `② fleet.json`) so the fastest
+  path — no typing — is the obvious one. It disappears once you have networks.
 - A sticky **search box** + **kind filter** at the top — built for 50+ entries.
-- An **Add** form whose fields adapt to the kind (SSID/BSSID, or agent URL+token,
-  etc.).
+- A **floating toast** reports every action (added / selected / deleted / fired /
+  imported) **right where you are on screen** — it no longer matters that you
+  tapped Fire on row 40; the result pops at the bottom and stays put. Successes
+  auto-dismiss; errors and refusals stay until you close them.
+- **Add a network manually** and **Bulk import** are collapsed by default (import
+  leads), each a tap away; the Add form's fields adapt to the kind.
 - Each row: name, kind badge, key fields, a **• here** marker when it matches the
   WiFi you're currently on, a **✓ selected** marker, and **Select / Fire Test /
   Delete** buttons.
 - Dependency-free (vanilla JS) so it works on an offline pi; the token comes
   from the page's own `?token=` link.
 
+### Authorizing a wifi_target (why a Fire Test says "REFUSED")
+
+This is intentional and is the safety gate. A `wifi_target` Fire Test is refused
+until that network is on the `authorized_targets` allowlist, which is **empty by
+default**. When a fire is refused the toast tells you exactly what to do: add the
+target's **BSSID or SSID** to `authorized_targets` under
+`[main.plugins.netmanager_ng]` in `/etc/pwnagotchi/config.toml`, then restart:
+
+```toml
+authorized_targets = ["00:11:22:33:44:55", "MyLabAP"]
+```
+```bash
+sudo systemctl restart pwnagotchi
+```
+
+Authorization stays in config (a deliberate, `sudo` action) — on purpose. The web
+page never edits the allowlist itself. **Only add networks you own or are
+explicitly authorized to test.**
+
 ---
 
 ## Status
 
 **Software complete + sandbox-tested.** Backbone (store/CRUD/search/validation),
-bulk import (handshakes + fleet.json, deduped), and all three fires (fleet
-probe; wifi_join association check; wifi_target allowlist gate) are done, with a
-live HTTP pass and an end-to-end integration firing through netmanager at a real
-remoteexec agent. Installer + QR helper included.
+bulk import (handshakes + fleet.json, deduped, fleetctl `{"agents":…}` unwrapped),
+and all three fires (fleet probe; wifi_join association check; wifi_target
+allowlist gate) are done, with a live HTTP pass and an end-to-end integration
+firing through netmanager at a real remoteexec agent. New-user UX (welcome/empty
+state, plain-language help, floating toast, actionable "how to authorize"
+message) and the installer + QR helper are included.
 
 **Remaining = hardware/lab, not software:** a real on-device pass before it
 graduates to `complete-plugins`; the wifi_join *connect* action needs a second

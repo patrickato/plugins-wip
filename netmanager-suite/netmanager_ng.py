@@ -576,7 +576,7 @@ def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=
 
 class NetManagerNG(plugins.Plugin):
     __author__ = "built for this project's network-manager track"
-    __version__ = "0.1.0"
+    __version__ = "0.2.0"
     __license__ = "GPL3"
     __description__ = ("Phone-friendly Network Manager: a searchable, 50+-scale "
                        "list of your networks/targets with add/edit/delete, a "
@@ -882,14 +882,16 @@ _PAGE = r"""<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Network Manager</title>
 <style>
-  :root { color-scheme: light dark; --b:#888; --sel:#1769aa; --fire:#b00; }
+  :root { color-scheme: light dark; --b:#888; --sel:#1769aa; --fire:#b00;
+          --ok:#1a7f37; --err:#b00020; --info:#333; }
   * { box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; margin:0; padding:12px; max-width:860px; }
+  body { font-family: system-ui, sans-serif; margin:0; padding:12px 12px 90px; max-width:860px; }
   h1 { font-size:1.25rem; margin:.2rem 0; }
   .muted { color:#888; font-size:.85rem; }
-  .bar { position:sticky; top:0; background:Canvas; padding:8px 0; border-bottom:1px solid var(--b); }
+  .bar { position:sticky; top:0; z-index:5; background:Canvas; padding:8px 0; border-bottom:1px solid var(--b); }
   input, select, textarea, button { font:inherit; padding:7px 9px; margin:2px 0; }
   input[type=text], select, textarea { width:100%; }
+  button { cursor:pointer; border-radius:6px; border:1px solid var(--b); background:transparent; }
   .row { border:1px solid var(--b); border-radius:8px; padding:8px 10px; margin:8px 0; }
   .row.sel { border-color:var(--sel); border-width:2px; }
   .row .top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
@@ -897,19 +899,53 @@ _PAGE = r"""<!doctype html>
   .badge { font-size:.7rem; border:1px solid var(--b); border-radius:10px; padding:1px 7px; color:#888; }
   .fields { font-size:.8rem; color:#888; margin-top:3px; word-break:break-all; }
   .acts button { margin-left:4px; }
-  .fire { color:#fff; background:var(--fire); border:none; border-radius:6px; }
+  .fire { color:#fff; background:var(--fire); border:none; }
   .here { color:var(--sel); font-weight:600; }
   .add { border:1px dashed var(--b); border-radius:8px; padding:10px; margin:10px 0; }
   .add .kf { display:none; }
-  #result { white-space:pre-wrap; font-size:.85rem; border:1px solid var(--b); border-radius:6px; padding:8px; margin:8px 0; display:none; }
   .right { text-align:right; }
+  /* first-run welcome + help */
+  .welcome { border:2px solid var(--sel); border-radius:10px; padding:14px; margin:10px 0; }
+  .welcome h2 { margin:.1rem 0 .4rem; font-size:1.05rem; }
+  .big { display:block; width:100%; text-align:center; padding:12px; margin:6px 0;
+         font-weight:600; border:1px solid var(--sel); }
+  .big.primary { background:var(--sel); color:#fff; border-color:var(--sel); }
+  details.help { border:1px solid var(--b); border-radius:8px; padding:6px 10px; margin:8px 0; }
+  details.help summary { cursor:pointer; font-weight:600; }
+  details.help table { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:6px; }
+  details.help td { border-top:1px solid var(--b); padding:5px 4px; vertical-align:top; }
+  details.help .k { font-weight:600; white-space:nowrap; }
+  /* floating toast - always visible, wherever you've scrolled */
+  #toast { position:fixed; left:50%; bottom:16px; transform:translateX(-50%) translateY(140%);
+           width:min(92vw,560px); z-index:50; border-radius:10px; padding:12px 40px 12px 14px;
+           color:#fff; background:var(--info); box-shadow:0 4px 18px rgba(0,0,0,.35);
+           font-size:.9rem; white-space:pre-wrap; word-break:break-word;
+           opacity:0; transition:transform .2s ease, opacity .2s ease; pointer-events:none; }
+  #toast.show { transform:translateX(-50%) translateY(0); opacity:1; pointer-events:auto; }
+  #toast.ok { background:var(--ok); } #toast.err { background:var(--err); }
+  #toast .x { position:absolute; top:6px; right:10px; cursor:pointer; font-size:1.1rem;
+              line-height:1; opacity:.85; background:none; border:none; color:#fff; }
+  #toast .hint { display:block; margin-top:6px; font-size:.8rem; opacity:.92; }
 </style></head>
 <body>
 <h1>Network Manager</h1>
 <div class="muted" id="status">loading…</div>
 
+<details class="help">
+  <summary>New here? What is this &amp; how do I use it</summary>
+  <p class="muted" style="margin:.4rem 0;">Your phone command-center for the networks you work with.
+     Fastest start: <b>Bulk import</b> (below) pulls your networks in automatically — no typing.
+     Then use <b>search</b> at the top, <b>Select</b> to mark the one you're working on, and
+     <b>Fire Test</b> to check it. Three kinds of network:</p>
+  <table>
+    <tr><td class="k">wifi I join</td><td>a WiFi the pi connects to. <b>Fire Test</b> = is the pi on it right now? (read-only)</td></tr>
+    <tr><td class="k">fleet</td><td>another agent you enrolled (url + token). <b>Fire Test</b> = is it reachable &amp; is the token good? (read-only)</td></tr>
+    <tr><td class="k">wifi target</td><td>a WiFi you're <b>authorized</b> to test. <b>Fire Test</b> is <b>REFUSED</b> unless you've added it to the <code>authorized_targets</code> allowlist in config (empty by default — only networks you own/are allowed to test).</td></tr>
+  </table>
+</details>
+
 <div class="bar">
-  <input type="text" id="q" placeholder="search 50+ networks…" oninput="render()">
+  <input type="text" id="q" placeholder="search your networks…" oninput="render()">
   <select id="kfilter" onchange="render()">
     <option value="">all kinds</option>
     <option value="wifi_join">wifi I join</option>
@@ -918,11 +954,19 @@ _PAGE = r"""<!doctype html>
   </select>
 </div>
 
-<div id="list"></div>
-<div id="result"></div>
+<div id="welcome" class="welcome" style="display:none">
+  <h2>👋 Your network list is empty — let's fill it</h2>
+  <p class="muted">The quick way (no typing): pull your networks straight off the pi. Both are
+     additive &amp; deduped, so they're safe to tap more than once.</p>
+  <button class="big primary" onclick="doImport('handshakes')">① Import wifi targets from handshakes</button>
+  <button class="big" onclick="doImport('fleet')">② Import agents from fleet.json</button>
+  <p class="muted">Nothing to import yet? Open <b>Add a network manually</b> below.</p>
+</div>
 
-<div class="add">
-  <b>Add a network</b>
+<div id="list"></div>
+
+<details class="add" id="addbox">
+  <summary><b>Add a network manually</b></summary>
   <input type="text" id="a_name" placeholder="name (required)">
   <select id="a_kind" onchange="kindFields()">
     <option value="wifi_join">wifi I join</option>
@@ -934,13 +978,15 @@ _PAGE = r"""<!doctype html>
   <div class="kf" data-k="wifi_target"><input type="text" id="f_tssid" placeholder="SSID"><input type="text" id="f_tbssid" placeholder="BSSID (optional)"></div>
   <input type="text" id="a_notes" placeholder="notes (optional)">
   <button onclick="addNet()">Add</button>
-</div>
+</details>
 
-<div class="add">
-  <b>Bulk import</b> <span class="muted">(additive + deduped — safe to re-run)</span><br>
+<details class="add" id="importbox">
+  <summary><b>Bulk import</b> <span class="muted">(additive + deduped — safe to re-run)</span></summary>
   <button onclick="doImport('handshakes')">Import wifi targets from handshakes</button>
   <button onclick="doImport('fleet')">Import agents from fleet.json</button>
-</div>
+</details>
+
+<div id="toast" role="status" aria-live="polite"><button class="x" onclick="hideToast()" aria-label="dismiss">×</button><span id="toastmsg"></span></div>
 
 <script>
 const TOK = new URLSearchParams(location.search).get("token") || "";
@@ -956,13 +1002,26 @@ async function api(path, body){
 function esc(s){ return (s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function fieldsStr(e){ return Object.entries(e.fields||{}).filter(([k,v])=>v).map(([k,v])=>k+"="+v).join("  "); }
 
+/* floating toast: type = ok | err | info. errors/refusals stay until dismissed;
+   ok/info auto-hide. hint is an optional 2nd line (e.g. how to authorize). */
+let _toastT=null;
+function toast(msg, type, hint){
+  if(_toastT){ clearTimeout(_toastT); _toastT=null; }
+  const t=document.getElementById("toast");
+  document.getElementById("toastmsg").innerHTML = esc(msg) + (hint?("<span class='hint'>"+esc(hint)+"</span>"):"");
+  t.className = "show " + (type||"info");
+  if(type!=="err"){ _toastT = setTimeout(hideToast, 5000); }
+}
+function hideToast(){ document.getElementById("toast").className=""; }
+
 async function load(){
   STATE = await api("/api/state");
-  if(STATE.error){ document.getElementById("status").textContent = "auth error - check the token in your link"; return; }
+  if(STATE.error){ document.getElementById("status").textContent = "auth error — check the token in your link"; toast("Auth error — the token in your link is missing or wrong.","err"); return; }
   const c = STATE.counts||{};
   const on = STATE.current_ssid ? ("on <span class='here'>"+esc(STATE.current_ssid)+"</span>") : "not associated";
   document.getElementById("status").innerHTML =
     STATE.total+" networks ("+(c.wifi_join||0)+" join / "+(c.fleet||0)+" fleet / "+(c.wifi_target||0)+" target) · "+on;
+  document.getElementById("welcome").style.display = (STATE.total===0) ? "block" : "none";
   render();
 }
 function render(){
@@ -974,7 +1033,7 @@ function render(){
     if(q){ const hay=(e.name+" "+e.notes+" "+fieldsStr(e)+" "+e.kind).toLowerCase(); if(!hay.includes(q)) return false; }
     return true;
   });
-  if(!rows.length){ list.innerHTML = "<p class='muted'>no matches.</p>"; return; }
+  if(!rows.length){ list.innerHTML = STATE.total ? "<p class='muted'>no matches.</p>" : ""; return; }
   list.innerHTML = rows.map(e=>{
     const sel = e.id===STATE.selected;
     const isHere = e.kind==="wifi_join" && STATE.current_ssid && (e.fields.ssid||e.name)===STATE.current_ssid;
@@ -1002,17 +1061,38 @@ function gatherFields(){
   return f;
 }
 function val(id){ return document.getElementById(id).value.trim(); }
+function entryById(id){ return (STATE.networks||[]).find(e=>e.id===id) || null; }
 async function addNet(){
-  const name=val("a_name"); if(!name){ showResult("name is required"); return; }
+  const name=val("a_name"); if(!name){ toast("Name is required.","err"); return; }
   const r = await api("/api/add", {name, kind:document.getElementById("a_kind").value, notes:val("a_notes"), fields:gatherFields()});
-  if(r.ok){ ["a_name","a_notes","f_ssid","f_bssid","f_url","f_token","f_badhid","f_btok","f_tssid","f_tbssid"].forEach(i=>document.getElementById(i).value=""); await load(); }
-  else showResult("add failed: "+(r.error||"?"));
+  if(r.ok){ ["a_name","a_notes","f_ssid","f_bssid","f_url","f_token","f_badhid","f_btok","f_tssid","f_tbssid"].forEach(i=>document.getElementById(i).value=""); document.getElementById("addbox").open=false; toast("Added “"+name+"”.","ok"); await load(); }
+  else toast("Add failed: "+(r.error||"?"),"err");
 }
-async function sel(id){ const r=await api("/api/select",{id}); if(r.ok) await load(); else showResult(r.error); }
-async function delNet(id,name){ if(!confirm("Delete “"+name+"”?")) return; const r=await api("/api/delete",{id}); if(r.ok) await load(); else showResult(r.error); }
-async function fire(id){ showResult("firing…"); const r=await api("/api/fire",{id}); const pfx = r.stub?"[not wired] ":(r.ok?"✓ ":"✗ "); showResult(pfx+(r.message||r.error||JSON.stringify(r))); }
-function showResult(t){ const d=document.getElementById("result"); d.style.display="block"; d.textContent=t; }
-async function doImport(source){ showResult("importing from "+source+"…"); const r=await api("/api/import",{source}); if(r.ok){ showResult("imported from "+source+": +"+r.added+" added, "+r.skipped+" already there ("+r.total+" total)"); await load(); } else showResult("import failed: "+(r.error||"?")); }
+async function sel(id){ const r=await api("/api/select",{id}); if(r.ok){ const e=entryById(id); toast("Selected “"+((e&&e.name)||"")+"”.","ok"); await load(); } else toast(r.error||"select failed","err"); }
+async function delNet(id,name){ if(!confirm("Delete “"+name+"”?")) return; const r=await api("/api/delete",{id}); if(r.ok){ toast("Deleted “"+name+"”.","ok"); await load(); } else toast(r.error||"delete failed","err"); }
+async function fire(id){
+  const e=entryById(id); const label=(e&&e.name)||"";
+  toast("Firing test at “"+label+"”…","info");
+  const r=await api("/api/fire",{id});
+  const msg = (r.message||r.error||JSON.stringify(r));
+  if(r.stub){ toast(label+": not wired — "+msg,"info"); return; }
+  if(r.ok){ toast("✓ "+label+": "+msg,"ok"); return; }
+  // a refused wifi_target gets an actionable "how to authorize" hint
+  if(e && e.kind==="wifi_target" && r.authorized===false){
+    const who = (e.fields&&(e.fields.bssid||e.fields.ssid)) || e.name || "?";
+    toast("✗ "+label+" — REFUSED (not authorized).",
+          "err",
+          "To allow it: add \""+who+"\" to authorized_targets under [main.plugins.netmanager_ng] in /etc/pwnagotchi/config.toml, then restart pwnagotchi. Only networks you own or are authorized to test.");
+    return;
+  }
+  toast("✗ "+label+": "+msg,"err");
+}
+async function doImport(source){
+  toast("Importing from "+source+"…","info");
+  const r=await api("/api/import",{source});
+  if(r.ok){ toast("Imported from "+source+": +"+r.added+" added, "+r.skipped+" already there ("+r.total+" total).","ok"); await load(); }
+  else toast("Import failed: "+(r.error||"?"),"err");
+}
 kindFields(); load();
 </script>
 </body></html>

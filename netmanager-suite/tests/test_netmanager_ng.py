@@ -275,6 +275,8 @@ def test_live_http():
         check("live: no token -> 401", st == 401)
         st, body = call("/")
         check("live: page serves", st == 200 and "Network Manager" in body)
+        check("live: page has floating toast", 'id="toast"' in body and "function toast(" in body)
+        check("live: page has first-run welcome + help", 'id="welcome"' in body and "New here?" in body)
         st, b = call("/api/add", {"name": "lab", "kind": "fleet", "fields": {"url": "http://x:8084", "token": "z"}})
         nid = json.loads(b)["id"]
         check("live: add ok", st == 200)
