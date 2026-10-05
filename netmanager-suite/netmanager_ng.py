@@ -72,6 +72,8 @@ DEFAULTS = {
     "port": 8085,
     # Where the network list lives (0600; may hold fleet tokens).
     "store_path": "/etc/pwnagotchi/netmanager_ng/networks.json",
+    # Per-fire network timeout (seconds) - e.g. the fleet reachability probe.
+    "fire_timeout_seconds": 10,
     "ui_enabled": True,
     "ui_position_x": -40,
     "ui_position_y": 30,
@@ -270,20 +272,74 @@ def search_networks(store, q="", kind=""):
 
 
 def fire_stub(entry):
-    """Backbone FIRE: no real action yet - a clear per-kind 'not wired' result.
-    The three real fire actions replace this, dispatching on entry['kind']."""
+    """FIRE for a kind that isn't wired yet - a clear per-kind 'not wired' result."""
     kind = (entry or {}).get("kind")
     msgs = {
-        "wifi_join": "connect/switch not wired yet (backbone) - coming in the connectivity slice",
-        "fleet": "fleet BadHID-fire not wired yet (backbone) - coming in the fleet slice",
-        "wifi_target": "wireless test not wired yet (backbone) - gated behind the authorized-target allowlist",
+        "wifi_join": "connect/switch not wired yet - coming in the connectivity slice",
+        "wifi_target": "wireless test not wired yet - gated behind the authorized-target allowlist",
     }
-    return {
-        "ok": False,
-        "stub": True,
-        "kind": kind,
-        "message": msgs.get(kind, "unknown kind"),
-    }
+    return {"ok": False, "stub": True, "kind": kind,
+            "message": msgs.get(kind, "unknown kind")}
+
+
+def _http_post_json(url, token, payload, timeout):  # pragma: no cover - real network
+    """POST json with a Bearer token. Returns (status|None, text). None status
+    means the request never completed (network error) - text carries why."""
+    import urllib.request
+    import urllib.error
+    data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + str(token)})
+    try:
+        r = urllib.request.urlopen(req, timeout=timeout)
+        return r.getcode(), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, e.read().decode("utf-8", "replace")
+        except Exception:
+            return e.code, ""
+    except Exception as e:
+        return None, str(e)
+
+
+def fire_fleet(entry, post_fn=None, timeout=10, probe_task="uptime"):
+    """FIRE a FLEET target = a safe reachability + auth probe: run a read-only
+    task on the agent's remoteexec API with the stored token, and report. No
+    side effects. post_fn(url, token, payload, timeout) -> (status|None, text)
+    is injectable for tests. Remote BadHID payload-firing is a separate,
+    heavier action (not this button)."""
+    post_fn = post_fn or _http_post_json
+    fields = (entry or {}).get("fields") or {}
+    url = (fields.get("url") or "").strip().rstrip("/")
+    token = fields.get("token") or ""
+    if not url:
+        return {"ok": False, "kind": "fleet", "message": "no agent url set for this fleet entry"}
+    status, text = post_fn(url + "/run", token, {"task": probe_task}, timeout)
+    if status is None:
+        return {"ok": False, "kind": "fleet", "message": "unreachable: " + str(text)[:160]}
+    if status == 401:
+        return {"ok": False, "kind": "fleet", "message": "auth failed (401) - check the stored token"}
+    try:
+        data = json.loads(text)
+    except Exception:
+        data = {}
+    if status == 200 and isinstance(data, dict) and data.get("ok"):
+        out = (data.get("stdout") or "").strip().splitlines()
+        return {"ok": True, "kind": "fleet",
+                "message": "reachable & authed - %s: %s" % (probe_task, out[0] if out else "ok")}
+    # Any other reply (unknown task, non-zero exit) still proves reach + auth.
+    note = (data.get("error") if isinstance(data, dict) else None) or (str(text)[:120] if text else "?")
+    return {"ok": True, "kind": "fleet",
+            "message": "reachable & authed (probe '%s' note: %s)" % (probe_task, note)}
+
+
+def fire_dispatch(entry, post_fn=None, timeout=10):
+    """Route FIRE by kind. fleet is wired (safe probe); the others are stubs."""
+    if (entry or {}).get("kind") == "fleet":
+        return fire_fleet(entry, post_fn=post_fn, timeout=timeout)
+    return fire_stub(entry)
 
 
 # ===========================================================================
@@ -519,9 +575,12 @@ class NetManagerNG(plugins.Plugin):
             entry = store["networks"].get(nid)
         if entry is None:
             return jsonify({"ok": False, "error": "no such network"}), 400
-        logging.warning("[netmanager_ng] FIRE requested on %s (%s) - %s",
-                        entry.get("name"), entry.get("kind"), "backbone stub")
-        return jsonify(fire_stub(entry)), 200
+        logging.warning("[netmanager_ng] FIRE requested on %s (%s)",
+                        entry.get("name"), entry.get("kind"))
+        result = fire_dispatch(entry, timeout=self._opt_int("fire_timeout_seconds", 10))
+        logging.warning("[netmanager_ng] FIRE %s result: ok=%s %s",
+                        entry.get("name"), result.get("ok"), result.get("message"))
+        return jsonify(result), 200
 
     # --- on-screen status ---
     def on_ui_setup(self, ui):
@@ -679,7 +738,7 @@ async function addNet(){
 }
 async function sel(id){ const r=await api("/api/select",{id}); if(r.ok) await load(); else showResult(r.error); }
 async function delNet(id,name){ if(!confirm("Delete “"+name+"”?")) return; const r=await api("/api/delete",{id}); if(r.ok) await load(); else showResult(r.error); }
-async function fire(id){ showResult("firing…"); const r=await api("/api/fire",{id}); showResult((r.ok?"":"[stub] ")+(r.message||r.error||JSON.stringify(r))); }
+async function fire(id){ showResult("firing…"); const r=await api("/api/fire",{id}); const pfx = r.stub?"[not wired] ":(r.ok?"✓ ":"✗ "); showResult(pfx+(r.message||r.error||JSON.stringify(r))); }
 function showResult(t){ const d=document.getElementById("result"); d.style.display="block"; d.textContent=t; }
 kindFields(); load();
 </script>

@@ -15,11 +15,13 @@ all three the same way; each kind's Fire action wires on top:
 | **fleet** | an agent you enrolled (url + token) | make it the active target | BadHID-fire / run a task on it |
 | **wifi_target** | a WiFi SSID/BSSID you're *authorized* to test | select it as the aim | a wireless test (deauth/capture) |
 
-> **This is the backbone.** The store, CRUD, search, select, the page, and a
-> **FIRE endpoint that returns a clear per-kind stub** ("not wired yet") are
-> done and tested. The three real fire actions land on top **without changing
-> the store or the page** — the `wifi_target` one behind the project's
-> non-negotiable **authorized-target allowlist (empty by default)**.
+> **Fire status.** The **fleet** fire is **wired**: it runs a safe
+> reachability+auth probe (a read-only task on the agent's remoteexec API with
+> the stored token) and reports back — no side effects. The other two are still
+> clear per-kind stubs ("not wired yet") and land next **without changing the
+> store or the page** — the `wifi_target` one behind the project's non-negotiable
+> **authorized-target allowlist (empty by default)**. (Remote BadHID *payload*
+> firing is a separate, heavier action, not this button.)
 
 ---
 
@@ -71,7 +73,11 @@ A one-command installer + QR helper (like BadHID's) comes with graduation.
 
 ## Status
 
-Backbone: **done + sandbox-tested** (pure store/CRUD/search + a live HTTP pass:
-auth, page, add/state/select/fire-stub/delete, 0600 store). Needs a real-hardware
-pass before it graduates. Next: wire the three Fire actions (fleet first — the
-chain's already proven), then the rest. See **NOTES.md**.
+Backbone + **fleet Fire: done + sandbox-tested.** Covered: pure store / CRUD /
+search / validation; the fleet probe (success, 401 auth-fail, unreachable,
+unknown-task); a live HTTP pass (auth, page, add/state/select/fire/delete, 0600
+store); and an **end-to-end integration** firing through netmanager at a real
+remoteexec agent (`reachable & authed - uptime: …`, and a wrong token →
+`auth failed (401)`). Needs a real-hardware pass before it graduates.
+Next: the **connectivity** (wifi_join) fire, then the gated **wifi_target**
+fire, then the rest. See **NOTES.md**.

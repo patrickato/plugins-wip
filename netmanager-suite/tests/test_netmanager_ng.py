@@ -96,9 +96,45 @@ def test_normalize():
 
 
 def test_fire_stub():
-    for k in m.KINDS:
+    # the two unwired kinds still stub; fleet is wired (tested separately)
+    for k in ("wifi_join", "wifi_target"):
         r = m.fire_stub({"kind": k})
         check(f"fire stub {k}: ok False + message", r["ok"] is False and r["stub"] is True and bool(r["message"]))
+
+
+def test_fire_fleet():
+    import json as _json
+    fleet = {"kind": "fleet", "fields": {"url": "http://10.0.0.5:8084/", "token": "tok"}}
+
+    # success: agent runs the probe task, ok=true with stdout
+    def ok_post(url, token, payload, timeout):
+        check("fleet probe hits /run", url.endswith("/run"))
+        check("fleet probe sends token", token == "tok")
+        check("fleet probe task is uptime", payload.get("task") == "uptime")
+        return 200, _json.dumps({"ok": True, "exit_code": 0, "stdout": "06:23 up 4:17\n"})
+    r = m.fire_fleet(fleet, post_fn=ok_post)
+    check("fleet success ok", r["ok"] is True and "reachable & authed" in r["message"] and "up 4:17" in r["message"])
+
+    # auth failure -> 401
+    r = m.fire_fleet(fleet, post_fn=lambda *a: (401, "unauthorized"))
+    check("fleet 401 -> not ok, auth msg", r["ok"] is False and "auth failed" in r["message"])
+
+    # unreachable -> status None
+    r = m.fire_fleet(fleet, post_fn=lambda *a: (None, "Connection refused"))
+    check("fleet unreachable -> not ok", r["ok"] is False and "unreachable" in r["message"])
+
+    # reachable but task unknown (200 ok=false) still proves reach+auth
+    r = m.fire_fleet(fleet, post_fn=lambda *a: (200, _json.dumps({"ok": False, "error": "unknown task 'uptime'"})))
+    check("fleet unknown-task -> reachable & authed", r["ok"] is True and "reachable & authed" in r["message"])
+
+    # no url set
+    r = m.fire_fleet({"kind": "fleet", "fields": {}}, post_fn=lambda *a: (200, "{}"))
+    check("fleet no-url refused", r["ok"] is False and "no agent url" in r["message"])
+
+    # dispatch routes fleet to fire_fleet and others to stub
+    rd = m.fire_dispatch(fleet, post_fn=lambda *a: (200, _json.dumps({"ok": True, "stdout": "x"})))
+    check("dispatch fleet -> real", rd["ok"] is True and not rd.get("stub"))
+    check("dispatch wifi_join -> stub", m.fire_dispatch({"kind": "wifi_join"}).get("stub") is True)
 
 
 def test_live_http():
@@ -147,8 +183,15 @@ def test_live_http():
         check("live: state total 1", json.loads(b)["total"] == 1)
         st, b = call("/api/select", {"id": nid})
         check("live: select ok", json.loads(b).get("selected") == nid)
+        # fleet fire runs a REAL probe; the dummy agent is unreachable -> ok:false, no stub
         st, b = call("/api/fire", {"id": nid})
-        check("live: fire stub", json.loads(b).get("stub") is True)
+        fr = json.loads(b)
+        check("live: fleet fire runs real probe", fr.get("stub") is None and "unreachable" in (fr.get("message") or ""))
+        # a wifi_join entry still fires as a stub over HTTP
+        st, b = call("/api/add", {"name": "Home", "kind": "wifi_join", "fields": {"ssid": "Home"}})
+        wid = json.loads(b)["id"]
+        st, b = call("/api/fire", {"id": wid})
+        check("live: wifi_join fire is stub", json.loads(b).get("stub") is True)
         st, b = call("/api/delete", {"id": nid})
         check("live: delete ok", json.loads(b).get("ok") is True)
         import stat
@@ -168,6 +211,7 @@ def main():
     test_search()
     test_normalize()
     test_fire_stub()
+    test_fire_fleet()
     test_live_http()
     print()
     if failures:

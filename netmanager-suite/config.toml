@@ -31,6 +31,9 @@ port = 8085
 # Where the network list is stored (0600 - may hold fleet tokens).
 store_path = "/etc/pwnagotchi/netmanager_ng/networks.json"
 
+# Per-fire network timeout in seconds (e.g. the fleet reachability probe).
+fire_timeout_seconds = 10
+
 # On-screen status (optional; shows the network count on the TFT).
 ui_enabled = true
 ui_position_x = -40

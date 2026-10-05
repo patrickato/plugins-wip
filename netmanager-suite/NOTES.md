@@ -35,8 +35,11 @@ The backbone's `/api/fire` dispatches on `kind` and returns a clear "not wired
 yet" message per kind. This keeps the UI and the contract complete while the
 real actions are built and hardware-tested one at a time:
 
-1. **fleet** — POST the agent's BadHID `/quickfire` (or run a task), reusing the
-   proven fleetctl path. Fastest to a real demo.
+1. **fleet** — ✅ **wired.** A safe reachability+auth probe: POST a read-only task
+   (`uptime`) to the agent's remoteexec `/run` with the stored token, report
+   reachable/authed/output. No side effects. Injectable `post_fn` for tests;
+   verified end-to-end against a real agent. (Remote BadHID *payload* firing is
+   a separate, heavier action, deliberately not this button.)
 2. **wifi_join** — connect/switch the pi's WiFi (wpa_cli / nmcli), then confirm.
    Needs care: don't drop the link you're managing it over.
 3. **wifi_target** — the offensive one (deauth / handshake capture). **Gated
