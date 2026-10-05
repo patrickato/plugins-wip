@@ -74,6 +74,13 @@ DEFAULTS = {
     "store_path": "/etc/pwnagotchi/netmanager_ng/networks.json",
     # Per-fire network timeout (seconds) - e.g. the fleet reachability probe.
     "fire_timeout_seconds": 10,
+    # NON-NEGOTIABLE GATE for wifi_target "fire": a wireless test is REFUSED
+    # unless the target's BSSID or SSID is on this explicit allowlist. EMPTY by
+    # default (so nothing can be fired at). Only add networks you own or are
+    # authorized to test. netmanager enforces this gate; it does not itself send
+    # deauth/attack frames - the actual test backend is wired on your own lab
+    # hardware (see README).
+    "authorized_targets": [],
     # Bulk-import sources (so you never hand-type 50+). Importing is deduped and
     # additive - it never deletes or overwrites what's already there.
     "handshakes_dir": "/home/pi/handshakes",                       # -> wifi_target rows
@@ -399,14 +406,67 @@ def import_fleet(store, rows):
 
 
 def fire_stub(entry):
-    """FIRE for a kind that isn't wired yet - a clear per-kind 'not wired' result."""
-    kind = (entry or {}).get("kind")
-    msgs = {
-        "wifi_join": "connect/switch not wired yet - coming in the connectivity slice",
-        "wifi_target": "wireless test not wired yet - gated behind the authorized-target allowlist",
-    }
-    return {"ok": False, "stub": True, "kind": kind,
-            "message": msgs.get(kind, "unknown kind")}
+    """FIRE for an unknown kind - a clear 'unknown' result."""
+    return {"ok": False, "stub": True, "kind": (entry or {}).get("kind"),
+            "message": "unknown kind"}
+
+
+def fire_wifi_join(entry, current_ssid=None):
+    """FIRE a WIFI_JOIN target = a safe, read-only connectivity test: is the pi
+    associated with this SSID right now? Does NOT switch the radio - the
+    built-in adapter is busy with pwnagotchi, so connecting needs a second USB
+    WiFi adapter (a documented, hardware step)."""
+    fields = (entry or {}).get("fields") or {}
+    ssid = (fields.get("ssid") or entry.get("name") or "").strip()
+    cur = (current_ssid or "").strip()
+    if ssid and cur and ssid == cur:
+        return {"ok": True, "kind": "wifi_join", "message": "connected to '%s' now" % ssid}
+    where = ("on '%s'" % cur) if cur else "not associated with any network"
+    return {"ok": False, "kind": "wifi_join",
+            "message": "not currently on '%s' (%s). Switching needs a 2nd WiFi "
+                       "adapter - the built-in radio is busy with pwnagotchi "
+                       "(see README)." % (ssid or "?", where)}
+
+
+def _norm_mac(s):
+    return re.sub(r"[:\-\s]", "", str(s or "").strip().lower())
+
+
+def target_authorized(bssid, ssid, allowlist):
+    """True only if this target's BSSID (colon-insensitive) or SSID (exact,
+    case-insensitive) is on the explicit allowlist. Empty allowlist => False."""
+    al = [str(x).strip() for x in (allowlist or []) if str(x).strip()]
+    if not al:
+        return False
+    raw = {x.lower() for x in al}
+    macs = {_norm_mac(x) for x in al}
+    if bssid and (bssid.strip().lower() in raw or _norm_mac(bssid) in macs):
+        return True
+    if ssid and ssid.strip().lower() in raw:
+        return True
+    return False
+
+
+def fire_wifi_target(entry, allowlist):
+    """FIRE a WIFI_TARGET = the GATE. A wireless test is REFUSED unless the
+    target is on the explicit authorized_targets allowlist (empty by default).
+    netmanager ENFORCES authorization here; it does not send deauth/attack
+    frames itself - the authorized path is an integration point for a backend
+    you run on your own authorized lab hardware."""
+    fields = (entry or {}).get("fields") or {}
+    bssid = (fields.get("bssid") or "").strip()
+    ssid = (fields.get("ssid") or entry.get("name") or "").strip()
+    who = bssid or ssid or "?"
+    if not target_authorized(bssid, ssid, allowlist):
+        return {"ok": False, "kind": "wifi_target", "authorized": False,
+                "message": "REFUSED - '%s' is not on your authorized_targets "
+                           "allowlist (empty by default). Add its BSSID or SSID "
+                           "there to authorize - only networks you own or are "
+                           "authorized to test." % who}
+    return {"ok": True, "kind": "wifi_target", "authorized": True,
+            "message": "authorized ✓ ('%s') - wire your wireless-test backend on "
+                       "your lab hardware (deauth/capture). netmanager enforces "
+                       "the gate; it does not send frames itself." % who}
 
 
 def _http_post_json(url, token, payload, timeout):  # pragma: no cover - real network
@@ -462,10 +522,18 @@ def fire_fleet(entry, post_fn=None, timeout=10, probe_task="uptime"):
             "message": "reachable & authed (probe '%s' note: %s)" % (probe_task, note)}
 
 
-def fire_dispatch(entry, post_fn=None, timeout=10):
-    """Route FIRE by kind. fleet is wired (safe probe); the others are stubs."""
-    if (entry or {}).get("kind") == "fleet":
+def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=None):
+    """Route FIRE by kind:
+      fleet       -> safe reachability+auth probe
+      wifi_join   -> safe read-only association check
+      wifi_target -> the authorized-target allowlist GATE (no frames sent here)"""
+    kind = (entry or {}).get("kind")
+    if kind == "fleet":
         return fire_fleet(entry, post_fn=post_fn, timeout=timeout)
+    if kind == "wifi_join":
+        return fire_wifi_join(entry, current_ssid=current_ssid)
+    if kind == "wifi_target":
+        return fire_wifi_target(entry, allowlist=allowlist)
     return fire_stub(entry)
 
 
@@ -738,7 +806,11 @@ class NetManagerNG(plugins.Plugin):
             return jsonify({"ok": False, "error": "no such network"}), 400
         logging.warning("[netmanager_ng] FIRE requested on %s (%s)",
                         entry.get("name"), entry.get("kind"))
-        result = fire_dispatch(entry, timeout=self._opt_int("fire_timeout_seconds", 10))
+        result = fire_dispatch(
+            entry,
+            timeout=self._opt_int("fire_timeout_seconds", 10),
+            current_ssid=self.current_ssid(),
+            allowlist=self._opt("authorized_targets") or [])
         logging.warning("[netmanager_ng] FIRE %s result: ok=%s %s",
                         entry.get("name"), result.get("ok"), result.get("message"))
         return jsonify(result), 200

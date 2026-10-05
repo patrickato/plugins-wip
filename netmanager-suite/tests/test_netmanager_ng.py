@@ -96,10 +96,36 @@ def test_normalize():
 
 
 def test_fire_stub():
-    # the two unwired kinds still stub; fleet is wired (tested separately)
-    for k in ("wifi_join", "wifi_target"):
-        r = m.fire_stub({"kind": k})
-        check(f"fire stub {k}: ok False + message", r["ok"] is False and r["stub"] is True and bool(r["message"]))
+    r = m.fire_stub({"kind": "mystery"})
+    check("fire stub unknown kind", r["ok"] is False and r["stub"] is True)
+
+
+def test_fire_wifi_join():
+    e = {"kind": "wifi_join", "name": "Home", "fields": {"ssid": "Home"}}
+    r = m.fire_wifi_join(e, current_ssid="Home")
+    check("wifi_join on it -> ok", r["ok"] is True and "connected to 'Home'" in r["message"])
+    r = m.fire_wifi_join(e, current_ssid="Other")
+    check("wifi_join not on it -> not ok", r["ok"] is False and "not currently on 'Home'" in r["message"])
+    r = m.fire_wifi_join(e, current_ssid=None)
+    check("wifi_join none -> not associated", r["ok"] is False and "not associated" in r["message"])
+
+
+def test_fire_wifi_target():
+    e = {"kind": "wifi_target", "name": "NETGEAR", "fields": {"ssid": "NETGEAR", "bssid": "AA:BB:CC:DD:EE:FF"}}
+    # empty allowlist -> REFUSED
+    r = m.fire_wifi_target(e, allowlist=[])
+    check("wifi_target empty allowlist refused", r["ok"] is False and r["authorized"] is False and "REFUSED" in r["message"])
+    # bssid on allowlist (colon-insensitive) -> authorized, but no frames sent
+    r = m.fire_wifi_target(e, allowlist=["aabbccddeeff"])
+    check("wifi_target bssid authorized (no colons)", r["ok"] is True and r["authorized"] is True and "enforces the gate" in r["message"])
+    # ssid on allowlist -> authorized
+    r = m.fire_wifi_target(e, allowlist=["netgear"])
+    check("wifi_target ssid authorized", r["ok"] is True and r["authorized"] is True)
+    # a different target not on allowlist -> refused
+    r = m.fire_wifi_target({"kind": "wifi_target", "name": "Other", "fields": {"bssid": "11:22:33:44:55:66"}}, allowlist=["aabbccddeeff"])
+    check("wifi_target other refused", r["ok"] is False)
+    # target_authorized direct
+    check("target_authorized empty -> False", m.target_authorized("AA:BB:CC:DD:EE:FF", "x", []) is False)
 
 
 def test_import_parsers():
@@ -169,7 +195,8 @@ def test_fire_fleet():
     # dispatch routes fleet to fire_fleet and others to stub
     rd = m.fire_dispatch(fleet, post_fn=lambda *a: (200, _json.dumps({"ok": True, "stdout": "x"})))
     check("dispatch fleet -> real", rd["ok"] is True and not rd.get("stub"))
-    check("dispatch wifi_join -> stub", m.fire_dispatch({"kind": "wifi_join"}).get("stub") is True)
+    check("dispatch wifi_join -> real", m.fire_dispatch({"kind": "wifi_join", "name": "X"}, current_ssid=None).get("stub") is None)
+    check("dispatch wifi_target -> gate", m.fire_dispatch({"kind": "wifi_target", "name": "Y"}, allowlist=[]).get("authorized") is False)
 
 
 def test_live_http():
@@ -231,11 +258,18 @@ def test_live_http():
         st, b = call("/api/fire", {"id": nid})
         fr = json.loads(b)
         check("live: fleet fire runs real probe", fr.get("stub") is None and "unreachable" in (fr.get("message") or ""))
-        # a wifi_join entry still fires as a stub over HTTP
+        # wifi_join fires a real association check (no SSID in sandbox -> not on it)
         st, b = call("/api/add", {"name": "Home", "kind": "wifi_join", "fields": {"ssid": "Home"}})
         wid = json.loads(b)["id"]
         st, b = call("/api/fire", {"id": wid})
-        check("live: wifi_join fire is stub", json.loads(b).get("stub") is True)
+        wr = json.loads(b)
+        check("live: wifi_join real check", wr.get("stub") is None and "not currently on" in (wr.get("message") or ""))
+        # wifi_target fires the GATE -> refused (empty allowlist)
+        st, b = call("/api/add", {"name": "T", "kind": "wifi_target", "fields": {"bssid": "99:88:77:66:55:44"}})
+        tid = json.loads(b)["id"]
+        st, b = call("/api/fire", {"id": tid})
+        tr = json.loads(b)
+        check("live: wifi_target refused by gate", tr.get("ok") is False and "REFUSED" in (tr.get("message") or ""))
         # bulk import from handshakes (2 valid) and fleet.json (1)
         st, b = call("/api/import", {"source": "handshakes"})
         ir = json.loads(b)
@@ -267,6 +301,8 @@ def main():
     test_import_parsers()
     test_import_merge()
     test_fire_stub()
+    test_fire_wifi_join()
+    test_fire_wifi_target()
     test_fire_fleet()
     test_live_http()
     print()

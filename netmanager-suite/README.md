@@ -15,13 +15,18 @@ all three the same way; each kind's Fire action wires on top:
 | **fleet** | an agent you enrolled (url + token) | make it the active target | BadHID-fire / run a task on it |
 | **wifi_target** | a WiFi SSID/BSSID you're *authorized* to test | select it as the aim | a wireless test (deauth/capture) |
 
-> **Fire status.** The **fleet** fire is **wired**: it runs a safe
-> reachability+auth probe (a read-only task on the agent's remoteexec API with
-> the stored token) and reports back — no side effects. The other two are still
-> clear per-kind stubs ("not wired yet") and land next **without changing the
-> store or the page** — the `wifi_target` one behind the project's non-negotiable
-> **authorized-target allowlist (empty by default)**. (Remote BadHID *payload*
-> firing is a separate, heavier action, not this button.)
+> **Fire status — all three wired (software complete).**
+> - **fleet** → a safe reachability+auth probe (read-only task on the agent's
+>   remoteexec API with the stored token). No side effects.
+> - **wifi_join** → a safe read-only check: *are you associated with this SSID
+>   right now?* It does **not** switch the radio — the built-in adapter is busy
+>   with pwnagotchi, so actually connecting needs a second USB WiFi adapter (a
+>   documented hardware step).
+> - **wifi_target** → the **GATE**. A wireless test is **REFUSED** unless the
+>   target's BSSID/SSID is on your explicit `authorized_targets` allowlist
+>   (**empty by default**). netmanager *enforces* authorization; it does **not**
+>   send deauth/attack frames itself — the authorized path is an integration
+>   point for a backend you run on your own authorized lab hardware.
 
 ---
 
@@ -34,27 +39,30 @@ all three the same way; each kind's Fire action wires on top:
 - **`bind_scope`** never binds the open LAN by default (`auto` → Tailscale if
   present, else localhost). The exact bound URL is logged.
 - **The store is `0600`** (it may hold fleet tokens), written atomically.
-- Firing is deliberately a no-op stub in the backbone; the offensive
-  `wifi_target` fire is gated behind an explicit allowlist when it's wired.
+- **`authorized_targets` is the non-negotiable gate** (empty by default): a
+  `wifi_target` fire is refused unless the target is explicitly listed. Only add
+  networks you own or are authorized to test. netmanager enforces the gate and
+  never sends attack frames itself.
 
 ---
 
 ## Install
 
+From a `plugins-wip` clone on the pi:
 ```bash
-# from a plugins-wip clone, on the pi:
-sudo cp netmanager-suite/netmanager_ng.py /etc/pwnagotchi/custom-plugins/
-# add the config block (generate a token first):
-python3 -c "import secrets; print(secrets.token_urlsafe(24))"
-sudo nano /etc/pwnagotchi/config.toml     # paste the block from config.toml, set auth_token, enabled=true
-sudo systemctl restart pwnagotchi
+cd ~/plugins-wip/netmanager-suite
+sudo ./netmanager_install.sh      # backs up, installs, generates a token, enabled=false, gate empty
 ```
-Then open the page on your phone (same network, or via Tailscale):
-`http://<pi>:8085/?token=<your-token>` — add a few networks, search, select,
-and try **Fire Test** (it'll tell you that kind isn't wired yet — that's the
-backbone talking).
-
-A one-command installer + QR helper (like BadHID's) comes with graduation.
+Then turn it on + make it phone-reachable (the installer prints these), restart,
+and get the QR:
+```bash
+sudo sed -i '/^\[main\.plugins\.netmanager_ng\]/,/^\[/ s/^enabled = false/enabled = true/' /etc/pwnagotchi/config.toml
+sudo sed -i '/^\[main\.plugins\.netmanager_ng\]/,/^\[/ s/^bind_scope = "auto"/bind_scope = "lan"/' /etc/pwnagotchi/config.toml
+sudo systemctl restart pwnagotchi && sleep 12
+sudo /etc/pwnagotchi/netmanager_ng/netmanager_phone.sh    # scannable QR, token baked in
+```
+Scan it, then hit **Bulk import** to pull your 50+ in one tap. Full undo:
+`sudo cp -a <the printed .bak> /etc/pwnagotchi/config.toml && sudo systemctl restart pwnagotchi`.
 
 ### Bulk import (never hand-type 50)
 
@@ -86,11 +94,13 @@ Each import reports `+N added, M already there`.
 
 ## Status
 
-Backbone + **fleet Fire: done + sandbox-tested.** Covered: pure store / CRUD /
-search / validation; the fleet probe (success, 401 auth-fail, unreachable,
-unknown-task); a live HTTP pass (auth, page, add/state/select/fire/delete, 0600
-store); and an **end-to-end integration** firing through netmanager at a real
-remoteexec agent (`reachable & authed - uptime: …`, and a wrong token →
-`auth failed (401)`). Needs a real-hardware pass before it graduates.
-Next: the **connectivity** (wifi_join) fire, then the gated **wifi_target**
-fire, then the rest. See **NOTES.md**.
+**Software complete + sandbox-tested.** Backbone (store/CRUD/search/validation),
+bulk import (handshakes + fleet.json, deduped), and all three fires (fleet
+probe; wifi_join association check; wifi_target allowlist gate) are done, with a
+live HTTP pass and an end-to-end integration firing through netmanager at a real
+remoteexec agent. Installer + QR helper included.
+
+**Remaining = hardware/lab, not software:** a real on-device pass before it
+graduates to `complete-plugins`; the wifi_join *connect* action needs a second
+USB WiFi adapter; and the wifi_target *execution* backend is wired on your own
+authorized lab hardware (netmanager only enforces the gate). See **NOTES.md**.
