@@ -83,7 +83,7 @@ DEFAULTS = {
     "authorized_targets": [],
     # Bulk-import sources (so you never hand-type 50+). Importing is deduped and
     # additive - it never deletes or overwrites what's already there.
-    "handshakes_dir": "/home/pi/handshakes",                       # -> wifi_target rows
+    "handshakes_dir": "/etc/pwnagotchi/handshakes",                       # -> wifi_target rows
     "fleet_json_path": "/home/pi/.config/fleetctl/fleet.json",     # -> fleet rows
     "ui_enabled": True,
     "ui_position_x": -40,
@@ -284,7 +284,7 @@ def search_networks(store, q="", kind=""):
 
 # --- bulk import (pure parsers; the plugin reads the files) -----------------
 
-_HS_SUFFIXES = (".pcap.cracked", ".pcap", ".pmkid", ".22000", ".hc22000", ".2500", ".hccapx")
+_HS_SUFFIXES = (".pcapng", ".pcap.cracked", ".pcap", ".pmkid", ".22000", ".hc22000", ".2500", ".hccapx")
 _BSSID_TAIL_RE = re.compile(r"_([0-9a-fA-F]{12})$")
 _BSSID_FULL_RE = re.compile(r"^[0-9a-fA-F]{12}$")
 
@@ -334,6 +334,31 @@ def scan_handshakes(filenames):
         seen.add(key)
         out.append({"ssid": ssid, "bssid": bssid})
     return out
+
+
+_HS_CFG_RE = re.compile(r'^\s*(?:main\.)?(?:bettercap\.)?handshakes\s*=\s*"([^"]+)"')
+
+
+def resolve_handshakes_dir(configured, pwnagotchi_config="/etc/pwnagotchi/config.toml",
+                           isdir=None):
+    """Find the real handshakes dir so import 'just works' across images:
+    the configured path if it exists, else the pwnagotchi config's
+    `handshakes = "..."`, else common locations. isdir is injectable for tests."""
+    isdir = isdir or os.path.isdir
+    if configured and isdir(configured):
+        return configured
+    try:
+        with open(pwnagotchi_config, "r", encoding="utf-8") as fh:
+            for line in fh:
+                m = _HS_CFG_RE.match(line)
+                if m and isdir(m.group(1)):
+                    return m.group(1)
+    except Exception:
+        pass
+    for d in ("/etc/pwnagotchi/handshakes", "/root/handshakes", "/home/pi/handshakes"):
+        if isdir(d):
+            return d
+    return configured  # fall back (listdir will then give a clear error)
 
 
 def fleet_rows(fleet_data):
@@ -771,7 +796,7 @@ class NetManagerNG(plugins.Plugin):
             store = self._load()
             try:
                 if source == "handshakes":
-                    path = self._opt("handshakes_dir")
+                    path = resolve_handshakes_dir(self._opt("handshakes_dir"))
                     try:
                         files = os.listdir(path)
                     except Exception as exc:

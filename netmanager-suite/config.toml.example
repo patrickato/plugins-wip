@@ -35,7 +35,7 @@ store_path = "/etc/pwnagotchi/netmanager_ng/networks.json"
 fire_timeout_seconds = 10
 
 # Bulk-import sources (so you never hand-type 50+). Import is deduped + additive.
-handshakes_dir = "/home/pi/handshakes"
+handshakes_dir = "/etc/pwnagotchi/handshakes"
 fleet_json_path = "/home/pi/.config/fleetctl/fleet.json"
 
 # ---------------------------------------------------------------------

@@ -131,6 +131,10 @@ def test_fire_wifi_target():
 def test_import_parsers():
     # handshake filename parsing
     check("hs ssid_bssid", m.parse_handshake_filename("Home_a1b2c3d4e5f6.pcap") == ("Home", "a1:b2:c3:d4:e5:f6"))
+    check("hs .pcapng (jayofelony)", m.parse_handshake_filename("akocsis_c899b21b872b.pcapng") == ("akocsis", "c8:99:b2:1b:87:2b"))
+    check("hs .pcapng numeric ssid", m.parse_handshake_filename("225101_000a998d5a91.pcapng") == ("225101", "00:0a:99:8d:5a:91"))
+    check("hs .22000", m.parse_handshake_filename("ARLO_9c3dcf59ac14.22000") == ("ARLO", "9c:3d:cf:59:ac:14"))
+    check("hs .gps.json ignored", m.parse_handshake_filename("ARLO_9c3dcf59ac14.gps.json") is None)
     check("hs ssid with underscores", m.parse_handshake_filename("My_Home_Net_001122334455.pcap") == ("My_Home_Net", "00:11:22:33:44:55"))
     check("hs cracked suffix", m.parse_handshake_filename("X_aabbccddeeff.pcap.cracked") == ("X", "aa:bb:cc:dd:ee:ff"))
     check("hs bssid only", m.parse_handshake_filename("aabbccddeeff.pcap") == ("", "aa:bb:cc:dd:ee:ff"))
@@ -145,6 +149,21 @@ def test_import_parsers():
                        "pi-b": {"url": "http://5.6.7.8:8084", "token": "u"}, "junk": 5})
     check("fleet_rows count", len(fr) == 2)
     check("fleet_rows badhid carried", any(r["fields"].get("badhid_url") == "http://1.2.3.4:8083" for r in fr))
+
+
+def test_resolve_handshakes_dir():
+    import tempfile
+    # configured path that exists -> used as-is
+    real = {"/exists": True}
+    check("resolve uses configured", m.resolve_handshakes_dir("/exists", isdir=lambda p: real.get(p, False)) == "/exists")
+    # configured missing -> read from pwnagotchi config 'handshakes = "..."'
+    cfgf = tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False)
+    cfgf.write('main.name = "x"\nhandshakes = "/etc/pwnagotchi/handshakes"\n'); cfgf.close()
+    got = m.resolve_handshakes_dir("/nope", pwnagotchi_config=cfgf.name,
+                                   isdir=lambda p: p == "/etc/pwnagotchi/handshakes")
+    check("resolve reads pwnagotchi config", got == "/etc/pwnagotchi/handshakes")
+    # nothing exists -> falls back to configured (clear error downstream)
+    check("resolve falls back", m.resolve_handshakes_dir("/x", pwnagotchi_config="/no/such", isdir=lambda p: False) == "/x")
 
 
 def test_import_merge():
@@ -299,6 +318,7 @@ def main():
     test_search()
     test_normalize()
     test_import_parsers()
+    test_resolve_handshakes_dir()
     test_import_merge()
     test_fire_stub()
     test_fire_wifi_join()
