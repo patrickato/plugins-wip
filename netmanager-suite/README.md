@@ -103,6 +103,29 @@ Built so a **brand-new user** can land on it and get going without reading docs:
 - Dependency-free (vanilla JS) so it works on an offline pi; the token comes
   from the page's own `?token=` link.
 
+### What "Fire Test" does — what you're firing, and what to expect
+
+**Fire Test is a safe check, not an attack.** No kind of Fire Test sends
+deauth/attack frames today — netmanager's job is to *enforce authorization* and
+to *check* things, not to transmit. Here's exactly what each kind does when you
+tap **Fire Test**, and the result to expect:
+
+| Kind | What Fire Test does | Does it transmit? | Expected result |
+|---|---|---|---|
+| **wifi target** | checks the `authorized_targets` allowlist gate | **No** — gate check only | `✗ REFUSED` (with the authorize command) until the target is on your allowlist, then `✓ authorized` |
+| **fleet** | a read-only probe to *your* agent's API with the stored token | a small HTTP request to your own agent | `✓ reachable & authed — uptime …`, or an unreachable/`auth failed` message |
+| **wifi join** | asks the radio "am I associated with this SSID right now?" | **No** — reads the radio | `✓ connected to '<ssid>' now`, or "not currently on …" |
+
+So a **green `✓` on a wifi target means "the gate passed — this target is now
+authorized,"** *not* "an attack was sent." That green is the whole point of the
+test: it proves the safety layer works end-to-end. Firing is safe to try at any
+time — the worst case is the red REFUSED.
+
+Actually sending a wireless test (deauth/capture) is a **separate backend you
+wire on your own authorized lab hardware** — see NOTES.md → "Wiring a real
+wireless-test backend." (Same category as wifi_join's "switching needs a 2nd USB
+WiFi adapter" — a documented hardware step, not a software gap.)
+
 ### Authorizing a wifi_target (why a Fire Test says "REFUSED")
 
 This is intentional and is the safety gate. A `wifi_target` Fire Test is refused
