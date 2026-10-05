@@ -1,0 +1,37 @@
+# NetManagerNG - add this block to /etc/pwnagotchi/config.toml
+#
+# Section name is [main.plugins.netmanager_ng], matching the plugin FILE's
+# basename (netmanager_ng.py). This fork's loader does NOT merge __defaults__,
+# so every option is spelled out here.
+#
+# WHAT THIS IS: a phone-friendly "Network Manager" page for a pwnagotchi you
+# own - a searchable, 50+-scale list of the networks/targets you work with
+# (wifi you join, fleet agents, wifi attack targets), with add/edit/delete, a
+# current/selected marker, and a per-row FIRE TEST button. BACKBONE: the fire
+# action is a clear per-kind stub for now; the real fires wire on top.
+
+[main.plugins.netmanager_ng]
+enabled = false
+
+# ---------------------------------------------------------------------
+# >>> USER INPUT REQUIRED <<<
+# ---------------------------------------------------------------------
+# No working default. Blank/placeholder/<12 chars => the server refuses to
+# start. Generate one: python3 -c "import secrets; print(secrets.token_urlsafe(24))"
+auth_token = ""
+
+# Exposure. "auto" (tailscale IP if present, else 127.0.0.1), "tailscale"
+# (require tailscale or refuse), "localhost", or "lan" (0.0.0.0 - explicit,
+# logged, broad). The exact URL is always logged. Default to the least-exposed
+# scope that reaches your phone (lan on a home network you trust; tailscale is
+# more private).
+bind_scope = "auto"
+port = 8085
+
+# Where the network list is stored (0600 - may hold fleet tokens).
+store_path = "/etc/pwnagotchi/netmanager_ng/networks.json"
+
+# On-screen status (optional; shows the network count on the TFT).
+ui_enabled = true
+ui_position_x = -40
+ui_position_y = 30
