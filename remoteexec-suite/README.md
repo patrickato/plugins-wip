@@ -29,7 +29,24 @@ remote-exec track.
 - **Timeout + output cap** on every command; **every run is logged** at WARNING,
   with an optional JSON `audit_log`.
 
-## Install
+## Install — the one-command way (recommended)
+
+From inside this folder on the pi (a `plugins-wip` clone):
+```bash
+sudo ./remoteexec_install.sh
+```
+It backs up `config.toml` first, copies the plugin, appends the config block
+with a **freshly generated token**, `enabled=false`, **tasks mode**, and
+validates the result (auto-rolling back if it wouldn't parse). It deliberately
+does **not** enable it or open free mode. The installer prints the exact
+section-scoped command to turn it on when you're ready, plus:
+```bash
+./remoteexecctl.sh tasks        # list the allowed named tasks
+./remoteexecctl.sh run uptime   # run one, print its JSON
+./remoteexecctl.sh status       # is the agent up?
+```
+
+## Install — by hand
 
 1. Copy `remoteexec_ng.py` into your custom-plugins dir
    (`/etc/pwnagotchi/custom-plugins/`).
