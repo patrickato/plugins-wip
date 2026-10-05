@@ -74,6 +74,10 @@ DEFAULTS = {
     "store_path": "/etc/pwnagotchi/netmanager_ng/networks.json",
     # Per-fire network timeout (seconds) - e.g. the fleet reachability probe.
     "fire_timeout_seconds": 10,
+    # Bulk-import sources (so you never hand-type 50+). Importing is deduped and
+    # additive - it never deletes or overwrites what's already there.
+    "handshakes_dir": "/home/pi/handshakes",                       # -> wifi_target rows
+    "fleet_json_path": "/home/pi/.config/fleetctl/fleet.json",     # -> fleet rows
     "ui_enabled": True,
     "ui_position_x": -40,
     "ui_position_y": 30,
@@ -271,6 +275,129 @@ def search_networks(store, q="", kind=""):
     return rows
 
 
+# --- bulk import (pure parsers; the plugin reads the files) -----------------
+
+_HS_SUFFIXES = (".pcap.cracked", ".pcap", ".pmkid", ".22000", ".hc22000", ".2500", ".hccapx")
+_BSSID_TAIL_RE = re.compile(r"_([0-9a-fA-F]{12})$")
+_BSSID_FULL_RE = re.compile(r"^[0-9a-fA-F]{12}$")
+
+
+def _fmt_bssid(hex12):
+    h = hex12.lower()
+    return ":".join(h[i:i + 2] for i in range(0, 12, 2))
+
+
+def parse_handshake_filename(name):
+    """A pwnagotchi handshake filename -> (ssid, bssid) or None. Handles
+    '<ssid>_<12hex>.pcap' (ssid may contain underscores), a bare '<12hex>', and
+    an ssid-only name. Returns None for files that aren't handshakes."""
+    base = os.path.basename(str(name or "")).strip()
+    if not base:
+        return None
+    low = base.lower()
+    matched = False
+    for suf in _HS_SUFFIXES:
+        if low.endswith(suf):
+            base = base[: len(base) - len(suf)]
+            matched = True
+            break
+    if not matched:
+        return None  # only import recognized handshake files
+    m = _BSSID_TAIL_RE.search(base)
+    if m:
+        return (base[: m.start()], _fmt_bssid(m.group(1)))
+    if _BSSID_FULL_RE.match(base):
+        return ("", _fmt_bssid(base))
+    if base:
+        return (base, "")
+    return None
+
+
+def scan_handshakes(filenames):
+    """List of filenames -> deduped [{ssid, bssid}] (dedup by bssid, else ssid)."""
+    seen, out = set(), []
+    for fn in filenames or []:
+        r = parse_handshake_filename(fn)
+        if not r:
+            continue
+        ssid, bssid = r
+        key = bssid.lower() if bssid else ("ssid:" + ssid.lower())
+        if not key or key == "ssid:" or key in seen:
+            continue
+        seen.add(key)
+        out.append({"ssid": ssid, "bssid": bssid})
+    return out
+
+
+def fleet_rows(fleet_data):
+    """fleetctl fleet.json {label:{url,token,badhid:{url,token}}} -> fleet entries."""
+    out = []
+    for label, a in (fleet_data or {}).items():
+        if not isinstance(a, dict):
+            continue
+        fields = {"url": a.get("url", ""), "token": a.get("token", "")}
+        bh = a.get("badhid") or {}
+        if isinstance(bh, dict):
+            if bh.get("url"):
+                fields["badhid_url"] = bh["url"]
+            if bh.get("token"):
+                fields["badhid_token"] = bh["token"]
+        out.append({"name": str(label), "kind": "fleet", "fields": fields})
+    return out
+
+
+def _dedup_key(kind, name, fields):
+    f = fields or {}
+    if kind == "wifi_target":
+        return (f.get("bssid") or "").lower() or ("ssid:" + (f.get("ssid") or name or "").lower())
+    if kind == "fleet":
+        return (f.get("url") or "").rstrip("/")
+    return "name:" + (name or "").lower()
+
+
+def _existing_keys(store, kind):
+    keys = set()
+    for e in store.get("networks", {}).values():
+        if e.get("kind") == kind:
+            k = _dedup_key(kind, e.get("name"), e.get("fields"))
+            if k:
+                keys.add(k)
+    return keys
+
+
+def import_wifi_targets(store, rows):
+    """Merge scan_handshakes() rows as wifi_target entries. Additive + deduped."""
+    existing = _existing_keys(store, "wifi_target")
+    added = skipped = 0
+    for r in rows or []:
+        fields = {"ssid": r.get("ssid", ""), "bssid": r.get("bssid", "")}
+        name = r.get("ssid") or r.get("bssid") or "unknown"
+        key = _dedup_key("wifi_target", name, fields)
+        if key in existing:
+            skipped += 1
+            continue
+        existing.add(key)
+        add_network(store, {"name": name, "kind": "wifi_target", "fields": fields})
+        added += 1
+    return added, skipped
+
+
+def import_fleet(store, rows):
+    """Merge fleet_rows() as fleet entries. Additive + deduped (by url)."""
+    existing = _existing_keys(store, "fleet")
+    added = skipped = 0
+    for r in rows or []:
+        key = _dedup_key("fleet", r.get("name"), r.get("fields"))
+        if key and key in existing:
+            skipped += 1
+            continue
+        if key:
+            existing.add(key)
+        add_network(store, r)
+        added += 1
+    return added, skipped
+
+
 def fire_stub(entry):
     """FIRE for a kind that isn't wired yet - a clear per-kind 'not wired' result."""
     kind = (entry or {}).get("kind")
@@ -453,6 +580,7 @@ class NetManagerNG(plugins.Plugin):
         app.add_url_rule("/api/update", "update", self._http_update, methods=["POST"])
         app.add_url_rule("/api/delete", "delete", self._http_delete, methods=["POST"])
         app.add_url_rule("/api/select", "select", self._http_select, methods=["POST"])
+        app.add_url_rule("/api/import", "import", self._http_import, methods=["POST"])
         app.add_url_rule("/api/fire", "fire", self._http_fire, methods=["POST"])
         try:
             self._server = make_server(bind_host, port, app, threaded=True)
@@ -565,6 +693,39 @@ class NetManagerNG(plugins.Plugin):
             return {"ok": True, "selected": store.get("selected")}, 200
         return self._mutate(op)
 
+    def _http_import(self):  # pragma: no cover - reads files + needs flask req
+        if not self._authed(request):
+            return Response("unauthorized", status=401)
+        source = (self._json_body().get("source") or "").strip().lower()
+        if source not in ("handshakes", "fleet"):
+            return jsonify({"ok": False, "error": "source must be 'handshakes' or 'fleet'"}), 400
+        with self._lock:
+            store = self._load()
+            try:
+                if source == "handshakes":
+                    path = self._opt("handshakes_dir")
+                    try:
+                        files = os.listdir(path)
+                    except Exception as exc:
+                        return jsonify({"ok": False, "error": "can't read %s: %s" % (path, exc)}), 400
+                    added, skipped = import_wifi_targets(store, scan_handshakes(files))
+                else:
+                    path = self._opt("fleet_json_path")
+                    try:
+                        with open(path, "r", encoding="utf-8") as fh:
+                            data = json.load(fh)
+                    except Exception as exc:
+                        return jsonify({"ok": False, "error": "can't read %s: %s" % (path, exc)}), 400
+                    added, skipped = import_fleet(store, fleet_rows(data))
+            except Exception as exc:
+                return jsonify({"ok": False, "error": "import failed: %s" % exc}), 400
+            if added:
+                self._save(store)
+        logging.warning("[netmanager_ng] IMPORT %s: +%d added, %d skipped (from %s)",
+                        source, added, skipped, path)
+        return jsonify({"ok": True, "source": source, "added": added,
+                        "skipped": skipped, "total": len(store["networks"])}), 200
+
     def _http_fire(self):  # pragma: no cover
         if not self._authed(request):
             return Response("unauthorized", status=401)
@@ -670,6 +831,12 @@ _PAGE = r"""<!doctype html>
   <button onclick="addNet()">Add</button>
 </div>
 
+<div class="add">
+  <b>Bulk import</b> <span class="muted">(additive + deduped — safe to re-run)</span><br>
+  <button onclick="doImport('handshakes')">Import wifi targets from handshakes</button>
+  <button onclick="doImport('fleet')">Import agents from fleet.json</button>
+</div>
+
 <script>
 const TOK = new URLSearchParams(location.search).get("token") || "";
 const H = {"Content-Type":"application/json","Authorization":"Bearer "+TOK};
@@ -740,6 +907,7 @@ async function sel(id){ const r=await api("/api/select",{id}); if(r.ok) await lo
 async function delNet(id,name){ if(!confirm("Delete “"+name+"”?")) return; const r=await api("/api/delete",{id}); if(r.ok) await load(); else showResult(r.error); }
 async function fire(id){ showResult("firing…"); const r=await api("/api/fire",{id}); const pfx = r.stub?"[not wired] ":(r.ok?"✓ ":"✗ "); showResult(pfx+(r.message||r.error||JSON.stringify(r))); }
 function showResult(t){ const d=document.getElementById("result"); d.style.display="block"; d.textContent=t; }
+async function doImport(source){ showResult("importing from "+source+"…"); const r=await api("/api/import",{source}); if(r.ok){ showResult("imported from "+source+": +"+r.added+" added, "+r.skipped+" already there ("+r.total+" total)"); await load(); } else showResult("import failed: "+(r.error||"?")); }
 kindFields(); load();
 </script>
 </body></html>

@@ -102,6 +102,41 @@ def test_fire_stub():
         check(f"fire stub {k}: ok False + message", r["ok"] is False and r["stub"] is True and bool(r["message"]))
 
 
+def test_import_parsers():
+    # handshake filename parsing
+    check("hs ssid_bssid", m.parse_handshake_filename("Home_a1b2c3d4e5f6.pcap") == ("Home", "a1:b2:c3:d4:e5:f6"))
+    check("hs ssid with underscores", m.parse_handshake_filename("My_Home_Net_001122334455.pcap") == ("My_Home_Net", "00:11:22:33:44:55"))
+    check("hs cracked suffix", m.parse_handshake_filename("X_aabbccddeeff.pcap.cracked") == ("X", "aa:bb:cc:dd:ee:ff"))
+    check("hs bssid only", m.parse_handshake_filename("aabbccddeeff.pcap") == ("", "aa:bb:cc:dd:ee:ff"))
+    check("hs ssid only", m.parse_handshake_filename("JustName.pcap") == ("JustName", ""))
+    check("non-handshake ignored", m.parse_handshake_filename("notes.txt") is None)
+    check("empty ignored", m.parse_handshake_filename("") is None)
+    # scan + dedup (same bssid twice -> one)
+    rows = m.scan_handshakes(["A_001122334455.pcap", "A_001122334455.pcap.cracked", "B_aabbccddeeff.pcap", "readme.md"])
+    check("scan dedups by bssid", len(rows) == 2)
+    # fleet.json -> rows
+    fr = m.fleet_rows({"pi-a": {"url": "http://1.2.3.4:8084", "token": "t", "badhid": {"url": "http://1.2.3.4:8083", "token": "b"}},
+                       "pi-b": {"url": "http://5.6.7.8:8084", "token": "u"}, "junk": 5})
+    check("fleet_rows count", len(fr) == 2)
+    check("fleet_rows badhid carried", any(r["fields"].get("badhid_url") == "http://1.2.3.4:8083" for r in fr))
+
+
+def test_import_merge():
+    s = m.empty_store()
+    a, sk = m.import_wifi_targets(s, m.scan_handshakes(["A_001122334455.pcap", "B_aabbccddeeff.pcap"]))
+    check("import wifi added 2", a == 2 and sk == 0)
+    # re-import same -> all skipped (dedup/additive)
+    a2, sk2 = m.import_wifi_targets(s, m.scan_handshakes(["A_001122334455.pcap", "C_010203040506.pcap"]))
+    check("re-import dedups", a2 == 1 and sk2 == 1)
+    check("store has 3 targets", len(m.search_networks(s, kind="wifi_target")) == 3)
+    # fleet import + dedup by url
+    rows = m.fleet_rows({"x": {"url": "http://1.1.1.1:8084/", "token": "t"}})
+    fa, fsk = m.import_fleet(s, rows)
+    check("fleet import added", fa == 1)
+    fa2, fsk2 = m.import_fleet(s, m.fleet_rows({"x2": {"url": "http://1.1.1.1:8084", "token": "t"}}))
+    check("fleet dedup by url (trailing slash)", fa2 == 0 and fsk2 == 1)
+
+
 def test_fire_fleet():
     import json as _json
     fleet = {"kind": "fleet", "fields": {"url": "http://10.0.0.5:8084/", "token": "tok"}}
@@ -149,8 +184,17 @@ def test_live_http():
     d = tempfile.mkdtemp()
     p = m.NetManagerNG()
     p.options = dict(m.DEFAULTS)
+    # set up import sources in the temp dir
+    hs = os.path.join(d, "handshakes")
+    os.makedirs(hs)
+    for fn in ("Alpha_001122334455.pcap", "Bravo_aabbccddeeff.pcap", "ignore.txt"):
+        open(os.path.join(hs, fn), "w").close()
+    fj = os.path.join(d, "fleet.json")
+    with open(fj, "w") as fh:
+        json.dump({"pi-a": {"url": "http://9.9.9.9:8084", "token": "t"}}, fh)
     p.options.update({"auth_token": "test-token-123456", "bind_scope": "localhost",
-                      "port": 8097, "store_path": os.path.join(d, "n.json"), "ui_enabled": False})
+                      "port": 8097, "store_path": os.path.join(d, "n.json"), "ui_enabled": False,
+                      "handshakes_dir": hs, "fleet_json_path": fj})
     if not p._start_server():
         check("live HTTP: server started", False)
         return
@@ -192,6 +236,16 @@ def test_live_http():
         wid = json.loads(b)["id"]
         st, b = call("/api/fire", {"id": wid})
         check("live: wifi_join fire is stub", json.loads(b).get("stub") is True)
+        # bulk import from handshakes (2 valid) and fleet.json (1)
+        st, b = call("/api/import", {"source": "handshakes"})
+        ir = json.loads(b)
+        check("live: import handshakes +2", ir.get("ok") and ir.get("added") == 2)
+        st, b = call("/api/import", {"source": "handshakes"})
+        check("live: re-import handshakes skips", json.loads(b).get("added") == 0)
+        st, b = call("/api/import", {"source": "fleet"})
+        check("live: import fleet +1", json.loads(b).get("added") == 1)
+        st, b = call("/api/import", {"source": "bogus"})
+        check("live: bad import source 400", st == 400)
         st, b = call("/api/delete", {"id": nid})
         check("live: delete ok", json.loads(b).get("ok") is True)
         import stat
@@ -210,6 +264,8 @@ def main():
     test_crud_and_cascade()
     test_search()
     test_normalize()
+    test_import_parsers()
+    test_import_merge()
     test_fire_stub()
     test_fire_fleet()
     test_live_http()

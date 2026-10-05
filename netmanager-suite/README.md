@@ -56,6 +56,19 @@ backbone talking).
 
 A one-command installer + QR helper (like BadHID's) comes with graduation.
 
+### Bulk import (never hand-type 50)
+
+Two buttons on the page pull your networks in, **additive and deduped** (safe to
+re-run):
+- **Import wifi targets from handshakes** — scans your handshakes dir (default
+  `/home/pi/handshakes`, configurable) and turns each capture's filename into a
+  `wifi_target` row (SSID + BSSID, deduped by BSSID).
+- **Import agents from fleet.json** — reads your fleetctl store (default
+  `/home/pi/.config/fleetctl/fleet.json`) and adds each agent as a `fleet` row
+  (url + token, plus its BadHID endpoint if set), deduped by URL.
+
+Each import reports `+N added, M already there`.
+
 ---
 
 ## The page

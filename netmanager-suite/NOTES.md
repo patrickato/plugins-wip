@@ -57,7 +57,10 @@ so it works on an offline pi and nothing phones home.
 ## Out of scope (for the backbone)
 
 - The three real fire actions (next).
-- Import from existing stores (pull wifi_target rows from the handshake/recon
-  data, fleet rows from fleet.json) — a nice "don't hand-type 50" follow-on.
+- ✅ **done** — Import from existing stores: `/api/import` pulls `wifi_target`
+  rows from the handshakes dir (filename → SSID/BSSID) and `fleet` rows from
+  fleetctl's `fleet.json`, additive + deduped. Pure parsers are unit-tested and
+  the endpoint has a live pass. Future sources (wigle CSV, the data-bus
+  potfile / bluetooth json) slot in the same way.
 - One-command installer + QR helper (added at graduation, like BadHID).
 - Bulk select / fire-across-many, tags, last-seen/geo for wardriven targets.
