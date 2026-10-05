@@ -110,6 +110,11 @@ max_actions = 20000
 # instead of hanging forever.
 write_timeout_seconds = 10
 
+# One-tap "quick fire" from the web page: a single button that ARMS and FIRES a
+# payload in one action (handy from a phone). Still requires the auth token. Set
+# false to force the deliberate two-step arm-then-fire on the web UI too.
+allow_quickfire = true
+
 # ---------------------------------------------------------------------
 # On-screen status (optional; monochrome-safe for the TFT)
 # ---------------------------------------------------------------------

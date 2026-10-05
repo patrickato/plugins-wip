@@ -119,6 +119,13 @@ sketchy-*looking* — each of which only types text, opens an app, or runs a
 The Windows demos use **Win+R (Run)**; each file's header has the macOS/Linux
 tweak. The plain ones work on any OS if you focus a text field first.
 
+> **After a `git pull` that adds/changes payloads**, copy them into the live
+> folder the plugin reads (a pull only updates the repo clone):
+> ```bash
+> sudo ./badhid_sync.sh
+> ```
+> They're picked up immediately — no restart needed.
+
 ---
 
 ## Controlling it
@@ -133,12 +140,28 @@ sudo ./badhidctl.sh disarm
 ```
 It reads your token from `/etc/pwnagotchi/badhid_ng/auth_token.txt` automatically.
 
-### The web page (trigger from your phone)
-After enabling the plugin, the log prints the control URL, e.g.
-`[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
-Open it and pass the token (the page asks via `Authorization: Bearer`; easiest is
-the CLI, or a browser extension that sets the header). The page shows arm state,
-the HID device, your payloads, and ARM / DISARM / FIRE buttons.
+### The web page / phone — one-tap fire
+The plugin serves a **mobile-friendly control page** with a **one-tap FIRE
+button per payload**. To open it, put your token in the URL:
+
+```
+http://<pi-address>:8083/?token=YOUR_TOKEN
+```
+
+- The token rides along in every button, so taps work with no extra steps.
+- **One-tap = arm + fire** in a single press (`allow_quickfire = true`, the
+  default). Set `allow_quickfire = false` to force the two-step ARM-then-FIRE on
+  the page too.
+- **To reach it from your phone**, the server must be on an address your phone
+  can hit. Easiest and safest is **Tailscale** (`bind_scope = "auto"` or
+  `"tailscale"`) — the log prints the exact `http://100.x.y.z:8083/` URL. Or set
+  `bind_scope = "lan"` to expose it on your LAN at `http://<pi-lan-ip>:8083/`
+  (less private — anyone on the network who has the token can reach it).
+- Bookmark the full `?token=` URL on your phone's home screen for true one-tap.
+
+Heads-up: putting the token in the URL means it shows in browser history. For a
+lab tool on your own network that's a fair trade for one-tap; use Tailscale and
+don't share the link.
 
 ### On the Pi's screen
 With `ui_enabled = true` a small **`BadHID`** indicator shows on the TFT:

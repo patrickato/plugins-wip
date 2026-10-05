@@ -172,6 +172,11 @@ DEFAULTS = {
     # error instead of hanging forever.
     "write_timeout_seconds": 10,
 
+    # One-tap "quick fire" from the web page: a single button that arms AND
+    # fires a payload in one action (convenience for a phone). It still needs
+    # the auth token. Set false to force the deliberate two-step arm-then-fire.
+    "allow_quickfire": True,
+
     # On-screen one-glyph status (optional; monochrome-safe for the TFT).
     "ui_enabled": True,
     "ui_position_x": -55,
@@ -897,6 +902,7 @@ class BadHIDNG(plugins.Plugin):
         app.add_url_rule("/arm", "arm", self._http_arm, methods=["POST"])
         app.add_url_rule("/disarm", "disarm", self._http_disarm, methods=["POST"])
         app.add_url_rule("/fire", "fire", self._http_fire, methods=["POST"])
+        app.add_url_rule("/quickfire", "quickfire", self._http_quickfire, methods=["POST"])
 
         try:
             self._server = make_server(bind_host, port, app, threaded=True)
@@ -925,6 +931,8 @@ class BadHIDNG(plugins.Plugin):
             return self._http_disarm()
         if p == "fire" and request.method == "POST":
             return self._http_fire()
+        if p == "quickfire" and request.method == "POST":
+            return self._http_quickfire()
         return Response("not found", status=404)
 
     # --- auth ---
@@ -944,31 +952,60 @@ class BadHIDNG(plugins.Plugin):
         return token_matches(configured, presented)
 
     # --- handlers (small; render via render_template_string) ---
+    def _token_for_page(self):
+        # the token the page uses to build its form links (from the request)
+        try:
+            t = request.values.get("token")
+            if t is None:
+                auth = request.headers.get("Authorization", "")
+                if auth.startswith("Bearer "):
+                    t = auth[len("Bearer "):].strip()
+            return t or ""
+        except Exception:
+            return ""
+
+    def _render(self, flash=None):
+        armed = self.is_armed()
+        hid = self._opt("hid_device")
+        return render_template_string(
+            _PAGE, armed=armed, payloads=self.list_payloads(), bind=self._bind_note,
+            hid=hid, hid_ready=os.path.exists(hid), last=self._last_fire,
+            targets=self._opt("authorized_targets") or [],
+            default_payload=self._opt("default_payload"),
+            token=self._token_for_page(),
+            allow_quickfire=self._opt_bool("allow_quickfire", True),
+            flash=flash,
+        )
+
     def _http_root(self):  # pragma: no cover - flask rendering
         if not self._authed(request):
             return Response("unauthorized", status=401)
-        armed = self.is_armed()
-        payloads = self.list_payloads()
-        hid = self._opt("hid_device")
-        hid_ready = os.path.exists(hid)
-        return render_template_string(
-            _PAGE, armed=armed, payloads=payloads, bind=self._bind_note,
-            hid=hid, hid_ready=hid_ready, last=self._last_fire,
-            targets=self._opt("authorized_targets") or [],
-            default_payload=self._opt("default_payload"),
-        )
+        return self._render()
+
+    def _wants_html(self):
+        # a browser form post -> re-render the page; a CLI/curl -> plain text
+        try:
+            acc = request.headers.get("Accept", "")
+            return "text/html" in acc
+        except Exception:
+            return False
+
+    def _reply(self, msg, ok, flash):
+        if self._wants_html():
+            return self._render(flash=flash)
+        return Response(msg + "\n", status=(200 if ok else 409))
 
     def _http_arm(self):  # pragma: no cover
         if not self._authed(request):
             return Response("unauthorized", status=401)
         self._arm("web UI")
-        return Response("armed\n", status=200)
+        return self._reply("armed", True, "Armed.")
 
     def _http_disarm(self):  # pragma: no cover
         if not self._authed(request):
             return Response("unauthorized", status=401)
         self._disarm("web UI")
-        return Response("disarmed\n", status=200)
+        return self._reply("disarmed", True, "Disarmed.")
 
     def _http_fire(self):  # pragma: no cover
         if not self._authed(request):
@@ -976,29 +1013,71 @@ class BadHIDNG(plugins.Plugin):
         name = request.values.get("payload") or self._opt("default_payload")
         target = request.values.get("target")
         ok, msg = self._fire(name, "web UI", target_label=target)
-        return Response(msg + "\n", status=(200 if ok else 409))
+        return self._reply(msg, ok, msg)
+
+    def _http_quickfire(self):  # pragma: no cover
+        # one-tap: arm + fire in a single action (still token-gated)
+        if not self._authed(request):
+            return Response("unauthorized", status=401)
+        if not self._opt_bool("allow_quickfire", True):
+            return self._reply("quickfire disabled (allow_quickfire=false)", False,
+                               "One-tap fire is disabled in config.")
+        name = request.values.get("payload") or self._opt("default_payload")
+        target = request.values.get("target") or "web one-tap"
+        self._arm("web UI one-tap")
+        ok, msg = self._fire(name, "web UI one-tap", target_label=target)
+        return self._reply(msg, ok, msg)
 
 
-# Minimal, JS-free, monochrome-friendly control page.
+# Mobile-friendly, JS-free control page. The token travels in a hidden field on
+# every form (and in ?token= for the page link), so one tap works from a phone.
 _PAGE = """<!doctype html><html><head><meta charset="utf-8">
-<title>BadHID control</title></head><body style="font-family:monospace;max-width:40em">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BadHID control</title>
+<style>
+ :root{color-scheme:light dark}
+ body{font-family:system-ui,-apple-system,sans-serif;max-width:32em;margin:0 auto;padding:16px;line-height:1.4}
+ h2{margin:.2em 0}
+ .state{font-size:1.4em;font-weight:700;padding:.3em .6em;border-radius:8px;display:inline-block}
+ .armed{background:#b00020;color:#fff}
+ .idle{background:#e0e0e0;color:#222}
+ .flash{background:#fff7d6;border:1px solid #e3cf6b;padding:.5em .7em;border-radius:8px;margin:.6em 0;word-break:break-word}
+ button{font-size:1.05em;padding:.7em 1em;border-radius:10px;border:1px solid #888;background:#f4f4f4;cursor:pointer}
+ button:active{transform:translateY(1px)}
+ .row{display:flex;gap:.5em;align-items:center;justify-content:space-between;border-bottom:1px solid #ccc;padding:.45em 0}
+ .name{font-family:monospace}
+ .fire{background:#1565c0;color:#fff;border-color:#0d47a1}
+ .arm{background:#2e7d32;color:#fff;border-color:#1b5e20}
+ .disarm{background:#616161;color:#fff}
+ form{margin:0}
+ small{color:#777}
+ @media (prefers-color-scheme:dark){.idle{background:#333;color:#eee}.flash{background:#3a360f;border-color:#6b5e2b}button{background:#2a2a2a;color:#eee;border-color:#555}}
+</style></head><body>
 <h2>BadHID control</h2>
-<p><b>State:</b> {{ "ARMED" if armed else "DISARMED" }}</p>
-<p><b>HID device:</b> {{ hid }} - {{ "ready" if hid_ready else "NOT PRESENT (run setup_composite_gadget.sh)" }}</p>
-<p><b>Bound:</b> {{ bind }}</p>
-<p><b>Advisory authorized_targets:</b> {{ targets|join(", ") if targets else "EMPTY (audit-only; not a technical restriction)" }}</p>
-{% if last %}<p><b>Last fire:</b> {{ last[0] }} (target: {{ last[1] or "none" }})</p>{% endif %}
-<hr>
-<form method="post" action="arm"><button>ARM</button></form>
-<form method="post" action="disarm"><button>DISARM</button></form>
-<hr>
-<p>Payloads in payloads_dir:</p>
-<ul>{% for p in payloads %}<li>{{ p }}</li>{% endfor %}{% if not payloads %}<li>(none)</li>{% endif %}</ul>
-<form method="post" action="fire">
-  payload: <input name="payload" value="{{ default_payload }}">
-  target label (for the audit log): <input name="target">
-  <button>FIRE (only works while ARMED)</button>
-</form>
-<p style="color:#555">Reminder: a USB keyboard can't verify which machine it's
-plugged into. Only plug this into hardware you own or are authorized to test.</p>
+<p><span class="state {{ 'armed' if armed else 'idle' }}">{{ 'ARMED' if armed else 'DISARMED' }}</span></p>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+<p><small>HID: {{ 'ready' if hid_ready else 'NOT PRESENT - run setup_composite_gadget.sh' }} &middot; {{ bind }}</small></p>
+{% if last %}<p><small>Last fire: {{ last[0] }} (target: {{ last[1] or 'none' }})</small></p>{% endif %}
+
+<div style="display:flex;gap:.5em;margin:.6em 0">
+  <form method="post" action="arm?token={{ token|urlencode }}"><input type="hidden" name="token" value="{{ token }}"><button class="arm">ARM</button></form>
+  <form method="post" action="disarm?token={{ token|urlencode }}"><input type="hidden" name="token" value="{{ token }}"><button class="disarm">DISARM</button></form>
+</div>
+
+<h3>Tap to fire</h3>
+<p><small>{% if allow_quickfire %}One tap arms &amp; fires. {% else %}Two-step: ARM first, then Fire. {% endif %}Only plug into hardware you own or are authorized to test.</small></p>
+{% for p in payloads %}
+<div class="row">
+  <span class="name">{{ p }}</span>
+  <form method="post" action="{{ 'quickfire' if allow_quickfire else 'fire' }}?token={{ token|urlencode }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="payload" value="{{ p }}">
+    <input type="hidden" name="target" value="web">
+    <button class="fire">{{ 'FIRE' if allow_quickfire else 'FIRE (armed)' }}</button>
+  </form>
+</div>
+{% endfor %}
+{% if not payloads %}<p>(no payloads in payloads_dir)</p>{% endif %}
+
+<p><small>Advisory authorized_targets: {{ targets|join(', ') if targets else 'EMPTY (audit-only, not a technical restriction - a USB keyboard cannot verify the host it types into)' }}</small></p>
 </body></html>"""
