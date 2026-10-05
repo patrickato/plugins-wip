@@ -49,7 +49,7 @@ if [ "$REVERT" = "1" ]; then
 fi
 
 # --- board detection --------------------------------------------------------
-MODEL="$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || echo unknown)"
+MODEL="$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')"; MODEL="${MODEL:-unknown}"
 echo "Board: $MODEL"
 
 CAP="unknown"   # capable | experimental | incapable | unknown

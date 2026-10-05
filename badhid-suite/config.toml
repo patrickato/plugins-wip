@@ -105,6 +105,11 @@ default_delay_ms = 0
 # Hard cap on parsed actions per payload, so a runaway file can't type forever.
 max_actions = 20000
 
+# If no host reads the HID gadget within this many seconds (e.g. the pi isn't
+# plugged into a powered/awake target), a fire aborts with a clear error
+# instead of hanging forever.
+write_timeout_seconds = 10
+
 # ---------------------------------------------------------------------
 # On-screen status (optional; monochrome-safe for the TFT)
 # ---------------------------------------------------------------------

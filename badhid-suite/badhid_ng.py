@@ -87,6 +87,21 @@ except Exception:  # pragma: no cover - flask/werkzeug always present on-device
     render_template_string = None
     make_server = None
 
+# On-screen status element (optional; absent in the test sandbox). Guarded so
+# the module imports without the full pwnagotchi.ui package present.
+try:
+    import pwnagotchi.ui.fonts as fonts
+    from pwnagotchi.ui.components import LabeledValue
+    from pwnagotchi.ui.view import BLACK
+    _UI_AVAILABLE = True
+except Exception:  # pragma: no cover - ui always present on-device
+    fonts = None
+    LabeledValue = None
+    BLACK = 0
+    _UI_AVAILABLE = False
+
+ELEMENT_NAME = "badhid"
+
 
 # ---------------------------------------------------------------------------
 # Options (read via _opt* against this dict - the fork never merges __defaults__)
@@ -152,6 +167,10 @@ DEFAULTS = {
     # Hard cap on a single payload's parsed action count, so a runaway/huge
     # file can't type forever.
     "max_actions": 20000,
+    # If no host reads the HID gadget within this many seconds (e.g. the pi
+    # isn't plugged into a powered/awake target), a fire aborts with a clear
+    # error instead of hanging forever.
+    "write_timeout_seconds": 10,
 
     # On-screen one-glyph status (optional; monochrome-safe for the TFT).
     "ui_enabled": True,
@@ -625,7 +644,50 @@ class BadHIDNG(plugins.Plugin):
             except Exception:
                 pass
             self._server = None
+        if _UI_AVAILABLE and ui is not None:
+            try:
+                with ui._lock:
+                    ui.remove_element(ELEMENT_NAME)
+            except Exception:
+                pass
         logging.info("[badhid_ng] unloaded")
+
+    # ------------------------------------------------------------------
+    # on-screen status (optional; monochrome-safe for the small TFT)
+    # ------------------------------------------------------------------
+    def on_ui_setup(self, ui):
+        if not (_UI_AVAILABLE and self._opt_bool("ui_enabled", True)):
+            return
+        try:
+            cx = self._opt_int("ui_position_x", -55)
+            # negative x = that many px in from the right edge (repo convention)
+            pos_x = ui.width() + cx if cx < 0 else cx
+            pos_x = max(0, min(pos_x, max(0, ui.width() - 10)))
+            pos_y = self._opt_int("ui_position_y", 10)
+            ui.add_element(ELEMENT_NAME, LabeledValue(
+                color=BLACK,
+                label="BadHID",
+                value="off",
+                position=(pos_x, pos_y),
+                label_font=fonts.Bold,
+                text_font=fonts.Medium,
+            ))
+        except Exception as exc:
+            logging.error("[badhid_ng] UI setup failed: %r", exc)
+
+    def on_ui_update(self, ui):
+        if not (_UI_AVAILABLE and self._opt_bool("ui_enabled", True)):
+            return
+        try:
+            if self.is_armed():
+                text = "ARMED"
+            elif not os.path.exists(self._opt("hid_device")):
+                text = "no-dev"
+            else:
+                text = "ready"
+            ui.set(ELEMENT_NAME, text)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # arm / disarm
@@ -723,18 +785,55 @@ class BadHIDNG(plugins.Plugin):
 
     def _write_stream(self, stream):  # pragma: no cover - needs real /dev/hidg0
         """Stream reports to the HID device. Isolated so tests can mock it and
-        so the device write is the ONLY part that needs real hardware."""
+        so the device write is the ONLY part that needs real hardware.
+
+        Opens /dev/hidg0 NON-BLOCKING with a per-write deadline. If no host is
+        reading the gadget (e.g. the pi isn't plugged into a powered, enumerated
+        target), a plain blocking write would hang forever; instead each report
+        waits up to write_timeout_seconds for the device to become writable and
+        then raises a clear TimeoutError, so a fire while unplugged fails fast
+        with a useful message instead of wedging the request thread."""
+        import errno
+        import select
+
         hid = self._opt("hid_device")
         key_delay = self._opt_int("inter_key_delay_ms", 5) / 1000.0
-        with open(hid, "wb", buffering=0) as dev:
+        deadline = max(1, self._opt_int("write_timeout_seconds", 10))
+
+        fd = os.open(hid, os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            def _put(buf):
+                remaining = buf
+                end = time.time() + deadline
+                while remaining:
+                    timeout = end - time.time()
+                    if timeout <= 0:
+                        raise TimeoutError(
+                            "HID device not accepting input - is the pi plugged "
+                            "into a powered, awake target that has enumerated the "
+                            "keyboard? (no host read the gadget within "
+                            f"{deadline}s)")
+                    _, wr, _ = select.select([], [fd], [], timeout)
+                    if not wr:
+                        continue
+                    try:
+                        n = os.write(fd, remaining)
+                        remaining = remaining[n:]
+                    except OSError as exc:
+                        if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                            continue
+                        raise
+
             for kind, val in stream:
                 if kind == "report":
-                    dev.write(val)
+                    _put(val)
                     if key_delay:
                         time.sleep(key_delay)
                 elif kind == "delay":
                     time.sleep(max(0, val) / 1000.0)
-            dev.write(RELEASE)
+            _put(RELEASE)
+        finally:
+            os.close(fd)
 
     # ------------------------------------------------------------------
     # payload directory

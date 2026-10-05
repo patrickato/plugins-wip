@@ -88,6 +88,7 @@ else
     echo "inter_key_delay_ms = 5"
     echo "default_delay_ms = 0"
     echo "max_actions = 20000"
+    echo "write_timeout_seconds = 10"
     echo "ui_enabled = true"
     echo "ui_position_x = -55"
     echo "ui_position_y = 10"

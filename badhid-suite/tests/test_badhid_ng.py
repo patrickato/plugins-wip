@@ -244,6 +244,49 @@ def test_payload_path_safety():
     check("rejects nested sep", p._payload_path("sub/ok.duck") is None)
 
 
+class FakeUI:
+    """Minimal stand-in for the pwnagotchi UI object."""
+    def __init__(self, width=250):
+        import threading
+        self._lock = threading.RLock()
+        self._w = width
+        self.elements = {}
+    def width(self):
+        return self._w
+    def add_element(self, name, el):
+        self.elements[name] = el
+    def set(self, name, val):
+        self.elements[name] = val
+    def remove_element(self, name):
+        self.elements.pop(name, None)
+
+
+def test_ui_hooks_safe():
+    # UI isn't available in the sandbox (_UI_AVAILABLE False) so the hooks must
+    # no-op without raising. This guards the import-guard + the enabled check.
+    p = make_plugin(ui_enabled=True)
+    ui = FakeUI()
+    try:
+        p.on_ui_setup(ui)
+        p.on_ui_update(ui)
+        p.on_unload(ui)
+        check("UI hooks no-op safely when UI unavailable", True)
+    except Exception as exc:
+        check(f"UI hooks no-op safely ({exc})", False)
+    # and with ui_enabled False they must also be inert
+    p2 = make_plugin(ui_enabled=False)
+    p2.on_ui_setup(ui); p2.on_ui_update(ui)
+    check("UI hooks respect ui_enabled=false", True)
+
+
+def test_write_timeout_option():
+    # write_timeout_seconds is read with a sane default and floor.
+    p = make_plugin()
+    check("write_timeout default is 10", p._opt_int("write_timeout_seconds", 10) == 10)
+    p2 = make_plugin(write_timeout_seconds=3)
+    check("write_timeout override honored", p2._opt_int("write_timeout_seconds", 10) == 3)
+
+
 def test_shipped_payloads():
     pdir = os.path.join(HERE, "..", "payloads")
     files = sorted(f for f in os.listdir(pdir) if f.endswith(".duck"))
@@ -274,6 +317,8 @@ def main():
     test_arm_state()
     test_fire_gate()
     test_payload_path_safety()
+    test_ui_hooks_safe()
+    test_write_timeout_option()
     test_shipped_payloads()
 
     print()

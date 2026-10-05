@@ -1,143 +1,106 @@
 # badhid-suite (`badhid_ng.py`)
 
-A USB HID keystroke-injection ("BadUSB") **framework** for testing against
-**your own authorized lab hardware**. A gadget-mode Pi becomes a USB keyboard
-that types a payload *you* wrote, on manual trigger, behind a token, with a
-loud audit log. This is the **A1+A2** slice of the
-`BADUSB_AND_REMOTE_EXEC_IDEAS` backlog: the composite-gadget layer plus a
+Turn a gadget-capable Raspberry Pi into a **USB keyboard** that types a payload
+*you* wrote — on demand, behind a token, with a loud log and an on-screen
+status. A "BadUSB / BadHID" lab tool for testing against **hardware you own or
+are authorized to test**. It's the A1+A2 slice of the
+`BADUSB_AND_REMOTE_EXEC_IDEAS` backlog: the USB-gadget layer + a
 DuckyScript-subset runner.
 
-## What it does / doesn't ship
+New to this? Read **"How it works in one minute"** then **"Quickstart"**. The
+`badhid_doctor.sh` script will hold your hand the whole way.
 
-- **Ships:** the HID gadget plumbing (a setup script), a DuckyScript-subset
-  interpreter + US keymap, an arm/disarm model, token auth, `bind_scope`, a
-  manual-fire web UI, and **three harmless demo payloads** (a Hello World, a
-  sinister-*looking* but inert Notepad skull, and a rickroll).
-- **Does not ship:** any offensive payload — no shells, credential grabbers,
-  defender-disablers, persistence, or exfiltration. You author real payloads
-  yourself.
+---
 
-## The safety line (read this)
+## How it works in one minute
 
-- A USB keyboard **cannot tell which machine it is plugged into.** The
-  arm/disarm model and `authorized_targets` list control *when* the injector
-  is live and *record what you intended to test*; they are **not** a technical
-  restriction on *which* host gets typed into. "Only my own gear" is operator
-  discipline. The only real safeguard against hitting the wrong machine is
-  **what you physically plug the device into.**
-- Default state is **disarmed, manual-fire only, auth-required, loud.** It will
-  not fire on a mere plug-in unless you deliberately set `fire_on_enumerate =
-  true` *and* arm it.
-- HID injection is legal on hardware you own. Keep it to your own gear or
-  targets you have **written** authorization to test.
+- A Pi with a USB **device-capable** port can pretend to be a keyboard. When you
+  plug that port into a computer, the computer thinks a keyboard was attached.
+- This plugin reads a **payload** (a little script in DuckyScript syntax) and
+  "types" it on that fake keyboard — into whatever window has focus.
+- You control it from a **web page or a one-line command**, over your network
+  (ethernet / Wi-Fi / Tailscale). So you can trigger it from your phone while
+  the Pi is plugged into the target.
+- It is **disarmed by default**. Nothing types until you **arm** it, and it
+  re-locks itself after firing. Every arm and fire is logged.
 
-## Requirements
+Two honest limits up front (more in **Limitations**):
+1. **Not every Pi can do this** — the USB port has to act as a *device*. Pi
+   Zero/Zero 2 W, Pi 4, Pi 3A+ can; Pi 3B/3B+, Pi 400 can't. See
+   **COMPATIBILITY.md**. `enable_dwc2.sh`/`badhid_doctor.sh` tell you which you
+   have.
+2. **A keyboard can't tell which computer it's plugged into.** The arm model and
+   `authorized_targets` control *when* it fires and *log your intent*; they
+   can't stop it typing into the wrong machine. The only real safeguard is
+   **what you physically plug it into.**
 
-- Pi 4 on the **jayofelony 64-bit** image, in USB **gadget** mode (`dwc2`).
-- `libcomposite` available (`modprobe libcomposite`).
-- Flask + Werkzeug (already present on the pwnagotchi image; used for the UI).
-- Root (writing `/dev/hidg0` and configuring the gadget need it).
+This suite ships the framework + **three harmless demos** and **no** offensive
+payloads. You write your own, for your own gear.
 
-## Install
+---
 
-1. **Copy the suite onto the pi** (your usual flow — Pi-side `git pull` of
-   `plugins-wip`, or `scp`). Place `badhid_ng.py` in your custom-plugins dir
-   (e.g. `/etc/pwnagotchi/custom-plugins/`), and put the `payloads/` contents
-   in `payloads_dir` (default `/etc/pwnagotchi/badhid_ng/payloads/`):
+## Quickstart (Pi 4, the common case)
 
-   ```bash
-   sudo mkdir -p /etc/pwnagotchi/badhid_ng/payloads
-   sudo cp badhid-suite/payloads/*.duck /etc/pwnagotchi/badhid_ng/payloads/
-   sudo cp badhid-suite/badhid_ng.py /etc/pwnagotchi/custom-plugins/
-   sudo cp badhid-suite/setup_composite_gadget.sh /root/
-   ```
-
-2. **Add the config block** from `config.toml` to `/etc/pwnagotchi/config.toml`.
-   Set a real `auth_token`:
-
-   ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(24))"
-   ```
-
-   Leave `enabled = false` until after step 3 if you want to stage it.
-
-3. **Bring up the composite gadget — deliberately, with a fallback way in.**
-   This reconfigures the live USB gadget and *can drop usb0*. Make sure you can
-   still reach the pi another way first (SSH over Wi-Fi/Tailscale, or
-   keyboard+HDMI):
-
-   ```bash
-   sudo /root/setup_composite_gadget.sh --status    # inspect first
-   sudo /root/setup_composite_gadget.sh             # bring it up (5s abort window)
-   ls -l /dev/hidg0                                  # should now exist
-   ```
-
-   To undo: `sudo /root/setup_composite_gadget.sh --teardown`.
-
-4. **Enable the plugin** (`enabled = true`) and restart pwnagotchi. The log
-   shows the control URL at WARNING, e.g.
-   `[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
-
-## Which Pis this works on
-
-The **plugin** is board-independent. The **keystroke hardware** needs a USB port
-that can act as a device, which not every Pi has — see **COMPATIBILITY.md** for
-the full matrix. Short version: **Pi Zero / Zero 2 W, Pi 4, Pi 3A+** work; **Pi 5**
-is experimental; **Pi 3B/3B+, Pi 400, Pi 1/2 can't** (power-only USB port).
-`enable_dwc2.sh` auto-detects the board and tells you which case you're in.
-
-## Powering it in the field (no laptop)
-
-The gadget doesn't care how the Pi is powered — only that its **device port** is
-cabled to the target. So you can run off a **UPS HAT or power bank** and use the
-data port purely for the target:
-
-- **Pi 4:** power via a GPIO **UPS HAT** (e.g. Waveshare UPS 3S) or 5V GPIO power
-  bank → the USB-C port becomes a pure data link. Cable: USB-C (Pi) → USB-A
-  (target). Plug in, arm from your phone, fire. No laptop needed.
-- **Pi Zero:** power the **PWR** micro-USB from a bank, data via the **USB** (OTG)
-  micro-USB → target.
-
-A **data-only / charge-blocked cable** is the clean choice when you're also on a
-UPS, so the Pi and target don't both push 5V down the line (usually harmless, but
-tidy). See COMPATIBILITY.md for the cable details.
-
-## Safe install & full restore (recommended)
-
-Three helper scripts make the install reversible. Run them from inside this
-`badhid-suite/` folder on the Pi:
-
-- **`badhid_backup.sh`** — snapshots `config.toml` + `custom-plugins/` into
-  `/etc/pwnagotchi/badhid_backups/` (tarball + a bare config copy). Handshakes
-  are not touched or backed up (large, irrelevant).
-- **`badhid_install.sh`** — the safe installer: backs up first, copies the
-  plugin + payloads (additive — your other plugins are untouched), appends the
-  `[main.plugins.badhid_ng]` block with a **freshly generated random token** and
-  `enabled = false`, then **validates `config.toml` parses and auto-rolls-back
-  the config from the backup if it doesn't.** It does *not* bring up the gadget
-  or enable anything — those stay your deliberate steps.
-- **`badhid_restore.sh`** — one-command undo: tears the runtime gadget down,
-  removes `badhid_ng.py`, restores `config.toml` + `custom-plugins/` from the
-  newest backup, restarts pwnagotchi. `--reboot` to reboot after.
+Everything runs on the Pi. You stay reachable over ethernet/Wi-Fi the whole
+time, so you can't lock yourself out.
 
 ```bash
+# 0) get the files onto the pi
+cd ~/plugins-wip && git pull || git clone https://github.com/patrickato/plugins-wip ~/plugins-wip
 cd ~/plugins-wip/badhid-suite
-sudo ./badhid_install.sh        # backup + install, prints your token + undo cmd
-# ...test (see below)...
-sudo ./badhid_restore.sh        # full undo, if you want it gone
+
+# 1) safe install (backs up first, generates a token, enabled=false, auto-rollback)
+sudo ./badhid_install.sh
+
+# 2) is the Pi's USB port ready? the doctor tells you the next step
+sudo ./badhid_doctor.sh
+#    on a fresh Pi 4 it'll say: run enable_dwc2.sh && reboot
+
+# 3) enable gadget mode (one-time), then reboot (ethernet survives it)
+sudo ./enable_dwc2.sh
+sudo reboot
+
+# --- after it comes back, SSH in again ---
+cd ~/plugins-wip/badhid-suite
+sudo ./badhid_doctor.sh                       # should now say: bring the gadget up
+sudo ./setup_composite_gadget.sh --hid-only   # creates /dev/hidg0
+sudo ./badhid_doctor.sh                        # should be all green except "enable the plugin"
+
+# 4) turn the plugin on: open the config, find [main.plugins.badhid_ng],
+#    change its  enabled = false  to  enabled = true  (that block is at the
+#    very end if badhid_install.sh added it). Then restart.
+sudo nano /etc/pwnagotchi/config.toml
+sudo systemctl restart pwnagotchi
+
+# 5) fire a harmless demo at the machine the Pi is plugged into
+sudo ./badhidctl.sh arm
+sudo ./badhidctl.sh fire hello_world.duck
 ```
 
-**Why this is safe to try:** your Pi is managed over **ethernet**, so losing
-`usb0` can't lock you out; the gadget change is **runtime-only** (configfs), so
-a plain `sudo reboot` already restores the original USB gadget; `config.toml` is
-backed up and the edit is validated with auto-rollback; and the plugin is a
-single added file. Worst-case total reset: `sudo ./badhid_restore.sh --reboot`.
+If anything's unclear at any point: **`sudo ./badhid_doctor.sh`** prints exactly
+what to do next.
 
-## The demo payloads (all harmless)
+> Not on a Pi 4? The same steps work on a Pi Zero/Zero 2 W or Pi 3A+ — step 3
+> still applies (`enable_dwc2.sh` auto-detects your board). On a Pi 3B/3B+/400 it
+> will tell you the board can't do HID and stop.
 
-The suite ships three proof-of-life payloads. None of them run a command,
-download anything, change anything, or persist — they only type characters.
-Point them only at a machine you own.
+---
+
+## The helper scripts (what each one is for)
+
+| Script | What it does | Reversible? |
+|---|---|---|
+| `badhid_install.sh` | Backup + install plugin/payloads + add config block (random token, `enabled=false`), with config auto-rollback | `badhid_restore.sh` |
+| `badhid_doctor.sh` | **Read-only** health check of the whole chain; prints the one next step | n/a |
+| `enable_dwc2.sh` | Put the USB port in gadget mode (`dr_mode=otg`); board-aware; **needs reboot** | `enable_dwc2.sh --revert` |
+| `setup_composite_gadget.sh` | Bring up the USB keyboard gadget (`/dev/hidg0`). `--hid-only` (keyboard only) or default (keyboard + USB net). Runtime only — a reboot clears it | `--teardown` |
+| `badhidctl.sh` | Friendly control: `status / list / arm / disarm / fire` (reads your token automatically) | n/a |
+| `badhid_backup.sh` | Snapshot config + plugins anytime | n/a |
+| `badhid_restore.sh` | Full undo: remove plugin, restore config, tear gadget down (`--reboot` option) | n/a |
+
+---
+
+## The demo payloads (all harmless — type-only, no commands)
 
 | File | What it does | OS |
 |---|---|---|
@@ -145,66 +108,137 @@ Point them only at a machine you own.
 | `spooky_skull.duck` | Opens Notepad and types an ASCII skull & crossbones with "I SEE YOU" / "I'M COMING FOR YOU!". Looks sinister, does **nothing** but type text you can close without saving. | Windows (adapt for mac/Linux) |
 | `rickroll.duck` | Opens the classic video in the default browser. | Windows (adapt for mac/Linux) |
 
-The two Windows demos use the **Win+R Run** box to launch Notepad / open the
-URL. Each file's header REM block has the one-line tweak for macOS/Linux (they
-just use that OS's launcher key instead of Win+R).
+The two Windows demos use **Win+R (Run)** to launch Notepad / open the URL. Each
+file's header has the one-line tweak for macOS/Linux.
 
-## Using it
+---
 
-The control page (reachable at the logged URL, with your token) shows arm
-state, the HID device status, your payload list, and a fire form. Auth: send
-the token as `Authorization: Bearer <token>`, header `X-Auth-Token`, or a
-`token=` form field.
+## Controlling it
 
-Typical flow against one of your own old PCs:
-
-1. Plug the pi into the target PC's USB port.
-2. On the control page: **ARM** (opens a 120s window; one-shot by default).
-3. On the target, click into where it should type — an empty text editor for
-   `hello_world.duck` (the Windows demos open their own window, so just leave
-   the target at the desktop).
-4. **FIRE** the payload. One-shot arming disarms it again automatically after.
-
-Quick CLI smoke test (from somewhere that can reach the bound URL):
-
+### Easiest: the CLI wrapper
 ```bash
-TOKEN=your-long-token
-BASE=http://127.0.0.1:8083      # or the tailscale URL from the log
-curl -s -X POST -H "Authorization: Bearer $TOKEN" $BASE/arm
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  --data "payload=hello_world.duck&target=my-old-laptop" $BASE/fire
+sudo ./badhidctl.sh status            # arm state, HID device, bound URL
+sudo ./badhidctl.sh list              # available payloads
+sudo ./badhidctl.sh arm
+sudo ./badhidctl.sh fire hello_world.duck   my-old-laptop   # (payload, optional label)
+sudo ./badhidctl.sh disarm
 ```
+It reads your token from `/etc/pwnagotchi/badhid_ng/auth_token.txt` automatically.
+
+### The web page (trigger from your phone)
+After enabling the plugin, the log prints the control URL, e.g.
+`[badhid_ng] control server up: auto -> tailscale - http://100.x.y.z:8083/`.
+Open it and pass the token (the page asks via `Authorization: Bearer`; easiest is
+the CLI, or a browser extension that sets the header). The page shows arm state,
+the HID device, your payloads, and ARM / DISARM / FIRE buttons.
+
+### On the Pi's screen
+With `ui_enabled = true` a small **`BadHID`** indicator shows on the TFT:
+`off` → `ready` (gadget up) → `ARMED` (live) → `no-dev` (gadget not up).
+
+---
+
+## Ways to run it (pick what fits)
+
+- **Tethered to a laptop (simplest first test):** the Pi is powered + plugged
+  into the laptop you're at. That laptop is the target — fire a demo into a
+  Notepad window on it.
+- **Field rig, no laptop:** power the Pi from a **UPS HAT or power bank** and run
+  a single **data cable** from the Pi's device port to the target. See
+  **"Powering it in the field"** below. Trigger from your phone.
+- **Gadget flavor:** `--hid-only` (target sees just a keyboard — best when you
+  manage the Pi over ethernet/Wi-Fi) or the default composite (keyboard + a USB
+  network link, if you want usb0 too).
+- **Exposure:** `bind_scope = auto` (Tailscale if present, else localhost),
+  `tailscale`, `localhost`, or `lan`. The URL is always logged.
+- **Trigger model:** manual fire (default), a timed arm window
+  (`arm_window_seconds`), one-shot vs repeat (`arm_one_shot`), or fire the moment
+  a host enumerates (`fire_on_enumerate`, off by default).
+
+### Powering it in the field (no laptop)
+The gadget doesn't care how the Pi is powered — only that its **device port** is
+cabled to the target:
+- **Pi 4:** power via a GPIO **UPS HAT** (e.g. Waveshare UPS 3S) or 5V power bank
+  → the USB-C port becomes a pure data link. Cable: USB-C (Pi) → USB-A (target).
+- **Pi Zero:** power the **PWR** micro-USB; data via the **USB** (OTG) micro-USB.
+
+Use a **data-only / charge-blocked cable** when you're also on a UPS so both
+ends don't push 5V down the line. More in **COMPATIBILITY.md**.
+
+---
 
 ## Writing your own payloads
 
-Drop `*.duck` (or `*.txt`) files in `payloads_dir`. Supported commands:
+Drop `*.duck` (or `*.txt`) files in `payloads_dir`
+(`/etc/pwnagotchi/badhid_ng/payloads`). Supported commands:
 
 | Command | Meaning |
 |---|---|
 | `REM ...` / `# ...` | comment |
 | `STRING <text>` | type the literal text |
 | `STRINGLN <text>` | type the text, then Enter |
-| `ENTER`, `TAB`, `ESC`, `UP`, `DELETE`, `F5`, ... | a named key (see `NAMED_KEYS`) |
+| `ENTER`, `TAB`, `ESC`, `UP`, `DELETE`, `F5`, ... | a named key |
 | `GUI r`, `CTRL ALT DELETE`, `CTRL c` | a modifier combo (GUI/CTRL/ALT/SHIFT) |
 | `DELAY <ms>` | pause |
 | `DEFAULTDELAY <ms>` | implicit pause between following lines |
 | `REPEAT <n>` | repeat the previous line n times |
 
-US keyboard layout only for now. Keep payloads pointed at your own equipment.
+US keyboard layout for now. Keep payloads pointed at your own equipment.
+
+---
+
+## Configuration reference
+
+Every option lives under `[main.plugins.badhid_ng]` (see `config.toml` for the
+commented block). Highlights:
+
+- `auth_token` — **required**, ≥12 chars, no placeholders, or the server refuses
+  to start.
+- `hid_device` (`/dev/hidg0`), `bind_scope`, `port` (8083).
+- `payloads_dir`, `default_payload`.
+- `arm_window_seconds` (120), `arm_one_shot` (true), `fire_on_enumerate` (false).
+- `inter_key_delay_ms` (5) — raise if a fast host drops characters.
+- `write_timeout_seconds` (10) — a fire aborts with a clear error if no host is
+  reading (e.g. not plugged into a powered/awake target), instead of hanging.
+- `authorized_targets` (advisory log only — see Limitations), `ui_*`.
+
+---
+
+## Limitations (read before sharing)
+
+- **Board support is hardware-bound.** Pi Zero/Zero 2 W, Pi 4, Pi 3A+: yes. Pi 5:
+  experimental. Pi 3B/3B+, Pi 400, Pi 1/2: no device port, so no HID. See
+  **COMPATIBILITY.md**.
+- **The allowlist is advisory, not a guard.** A USB keyboard can't verify the
+  host, so `authorized_targets` is an audit/intent record only. Physical control
+  of what you plug into is the real safeguard.
+- **US keyboard layout only** right now. Non-US layouts can mistype symbols.
+- **Focus matters.** It types into whatever window is focused. The Windows demos
+  open their own window (Run → Notepad/browser); a bare `STRING` demo needs you
+  to click into a text field first.
+- **One payload at a time, synchronous.** A long payload (many DELAYs) holds the
+  request until it finishes.
+- **This is a lab tool.** It ships no offensive payloads and won't be extended
+  into turnkey malware. Keep it to gear you own or are authorized to test.
+
+---
 
 ## Troubleshooting
 
-- **Server won't start, log says token refused:** `auth_token` is blank,
-  a placeholder, or under 12 chars. Set a real random token.
-- **Fire fails: "HID device /dev/hidg0 missing":** the gadget isn't up — run
-  `setup_composite_gadget.sh` (step 3).
-- **Fire fails: permission denied:** the pwnagotchi process must be able to
-  write `/dev/hidg0` (runs as root on the stock image).
-- **Lost usb0 after the setup script:** that's the documented risk — reach the
-  pi via your fallback path and run `--teardown`, then reconcile the script's
-  addressing with how your image builds its gadget (see NOTES.md).
-- **`bind_scope="tailscale"` refuses to start:** no tailscale interface was
-  found — that's the fail-safe. Start tailscale or use `auto`/`localhost`.
+Run **`sudo ./badhid_doctor.sh`** first — it pinpoints the broken link. Common ones:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `no UDC found` from the gadget script | USB port not in gadget mode (often `dr_mode=host`) | `sudo ./enable_dwc2.sh && sudo reboot` |
+| gadget script: `/dev/hidg0 missing` after bind | legacy `g_ether` grabbed the controller | the script auto-unbinds it; re-run; or `sudo ./setup_composite_gadget.sh --hid-only` |
+| server won't start, log: token refused | `auth_token` blank/placeholder/<12 chars | set a long random token in config, restart |
+| fire error: "HID device not accepting input" | Pi isn't plugged into a powered, awake, enumerated target | plug into the target; wake it; check the cable |
+| characters dropped/garbled on the target | host too slow for the type speed | raise `inter_key_delay_ms` (e.g. 10–20) |
+| wrong symbols typed | non-US keyboard layout on the target | US layout only for now |
+| lost `usb0` after the gadget came up | expected if you used composite on an ethernet-managed Pi | you manage over ethernet; or `--teardown`, or reboot |
+| want it all gone | — | `sudo ./badhid_restore.sh` (add `--reboot` to fully clear the gadget) |
+
+---
 
 ## Tests
 
@@ -212,10 +246,10 @@ US keyboard layout only for now. Keep payloads pointed at your own equipment.
 cd badhid-suite
 python3 tests/test_badhid_ng.py
 ```
-
 Sandbox tests cover the parser, keymap, report emitter, token/bind logic, the
-arm state machine, the fire gate (device write mocked), and payload-path
-safety. **Not** covered in sandbox (needs a real-hardware pass): the actual
-`/dev/hidg0` write reaching a host, `setup_composite_gadget.sh` keeping usb0
-alive, and the live server binding. Per repo rule, this suite does **not**
-graduate to `complete-plugins` until that on-device pass is done.
+arm state machine, the fire gate (device write mocked), payload-path safety, the
+UI hooks, and that every shipped payload parses. **Not** covered in sandbox
+(needs a real-hardware pass): the actual `/dev/hidg0` write reaching a host,
+`enable_dwc2.sh` + `setup_composite_gadget.sh` on real hardware, and the live
+server. Per repo rule, this suite doesn't graduate to `complete-plugins` until
+that on-device pass is done.
