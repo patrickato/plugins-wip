@@ -24,7 +24,16 @@ PWN_IFACE=""
 for cand in wlan0mon mon0 wlan0; do
   if ip link show "$cand" >/dev/null 2>&1; then PWN_IFACE="$cand"; break; fi
 done
-echo "pwnagotchi radio looks like: ${PWN_IFACE:-<none found>}   (do NOT use this as capture_iface)"
+# The pwnagotchi radio's PHY - anything sharing it is the SAME physical chip
+# (e.g. wlan0 and wlan0mon are both phy0). Those are all off-limits, not just
+# the one monitor iface.
+PWN_PHY=""
+if [ -n "$PWN_IFACE" ] && [ -L "/sys/class/net/$PWN_IFACE/phy80211" ]; then
+  PWN_PHY="$(basename "$(readlink "/sys/class/net/$PWN_IFACE/phy80211")")"
+fi
+# names the capture backend also refuses outright
+BUILTIN_NAMES=" wlan0 wlan0mon mon0 "
+echo "pwnagotchi radio looks like: ${PWN_IFACE:-<none found>} (${PWN_PHY:-?})   (do NOT use this phy as capture_iface)"
 echo
 
 # lsusb for the human (chipset hints)
@@ -62,12 +71,23 @@ for ifpath in /sys/class/net/*; do
 
   mode="$(iw dev "$ifc" info 2>/dev/null | awk '/type/{print $2; exit}')"
 
+  # excluded = the pwnagotchi chip (same name, same phy) or a builtin name
+  excluded="no"
+  [ "$ifc" = "$PWN_IFACE" ] && excluded="yes"
+  [ -n "$PWN_PHY" ] && [ "$phy" = "$PWN_PHY" ] && excluded="yes"
+  case "$BUILTIN_NAMES" in *" $ifc "*) excluded="yes";; esac
+
   tag=""
-  if [ "$ifc" = "$PWN_IFACE" ]; then
-    tag="  <- pwnagotchi radio (skip)"
+  if [ "$excluded" = "yes" ]; then
+    tag="  <- pwnagotchi radio / same chip (DO NOT use)"
   elif [ "$mon" = "YES" ]; then
-    tag="  <- CANDIDATE capture_iface"
-    [ -z "$RECOMMEND" ] && RECOMMEND="$ifc"
+    if [ -n "$chip" ]; then
+      tag="  <- CANDIDATE capture_iface (USB)"
+      # prefer a USB adapter; first one wins
+      [ -z "$RECOMMEND" ] && RECOMMEND="$ifc"
+    else
+      tag="  <- monitor-capable, but not USB"
+    fi
   fi
 
   echo "iface $ifc"
@@ -85,6 +105,11 @@ if [ -n "$RECOMMEND" ]; then
   echo "     capture_iface = \"$RECOMMEND\""
   echo "     capture_backend_enabled = true     # master switch (off by default)"
   echo " then restart pwnagotchi. (deauth_count stays 0 = passive capture until you set it.)"
+  echo
+  echo " Note on drivers: monitor-capable != good at injection. For the deauth"
+  echo " step, Atheros AR9271 (ath9k_htc) and RTL8812AU/8811AU (8812au) inject"
+  echo " well; rtl8192cu (RTL8188CUS) often does NOT - fine for passive capture,"
+  echo " weak for deauth. Passive (deauth_count=0) works on any of them."
 else
   echo " No monitor-capable SECOND adapter detected."
   echo " - If an adapter is plugged in, its driver may not support monitor mode,"
