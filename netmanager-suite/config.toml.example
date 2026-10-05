@@ -41,11 +41,36 @@ fleet_json_path = "/home/pi/.config/fleetctl/fleet.json"
 # ---------------------------------------------------------------------
 # NON-NEGOTIABLE GATE: a wifi_target "fire" is REFUSED unless the target's
 # BSSID or SSID is listed here. EMPTY by default - nothing can be fired at.
-# Only add networks you OWN or are AUTHORIZED to test. netmanager enforces this
-# gate; it does not itself send deauth/attack frames (the test backend is wired
-# on your own lab hardware - see README).
+# Only add networks you OWN or are AUTHORIZED to test. Manage it the easy way:
+#   sudo /etc/pwnagotchi/netmanager_ng/netmanagerctl.sh authorize <BSSID|SSID>
 # ---------------------------------------------------------------------
 authorized_targets = []
+
+# =====================================================================
+# wifi_target CAPTURE BACKEND (the authorized-path "real test").
+# OFF by default. This is a SECOND switch ON TOP of the allowlist above:
+# even for an authorized target, nothing is captured/sent unless BOTH
+# capture_backend_enabled=true AND capture_iface names a SECOND adapter.
+# It runs standard tools (airodump-ng capture locked to the one authorized
+# BSSID + an optional bounded, targeted aireplay-ng deauth) and drops the
+# handshake into your handshakes dir. Only against networks you own or are
+# authorized to test - same rule as the allowlist.
+#   Requirements: a 2nd monitor-mode USB adapter + aircrack-ng installed.
+#   Find the adapter: sudo /etc/pwnagotchi/netmanager_ng/netmanager_wifi_probe.sh
+# =====================================================================
+capture_backend_enabled = false
+# >>> USER INPUT REQUIRED (when you enable the backend) <<<
+# The SECOND adapter to capture on - NEVER the pwnagotchi radio (wlan0/wlan0mon).
+# Run netmanager_wifi_probe.sh to find a monitor-capable one (e.g. "wlan1").
+capture_iface = ""
+capture_seconds = 25
+# 0 = PASSIVE capture only (sends nothing). >0 = a bounded, targeted deauth to
+# coax a handshake; hard-capped (a capture nudge, never a flood). Start at 0.
+deauth_count = 0
+# Where the .pcapng lands (empty -> handshakes_dir above).
+capture_out_dir = ""
+# Interfaces the backend will REFUSE to use (the pwnagotchi/bettercap radio).
+builtin_ifaces = ["wlan0", "wlan0mon", "mon0"]
 
 # On-screen status (optional; shows the network count on the TFT).
 ui_enabled = true

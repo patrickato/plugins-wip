@@ -227,6 +227,74 @@ def test_fire_fleet():
     check("dispatch wifi_target -> gate", m.fire_dispatch({"kind": "wifi_target", "name": "Y"}, allowlist=[]).get("authorized") is False)
 
 
+def test_capture_backend_gating_and_cmds():
+    tgt = {"kind": "wifi_target", "name": "LabAP",
+           "fields": {"ssid": "LabAP", "bssid": "AA:BB:CC:DD:EE:FF", "channel": "6"}}
+    base = {"capture_backend_enabled": True, "capture_iface": "wlan1",
+            "capture_seconds": 20, "deauth_count": 0, "handshakes_dir": "/hs",
+            "builtin_ifaces": ["wlan0", "wlan0mon", "mon0"]}
+
+    # --- the gates that keep it from running ---
+    p, why = m.plan_capture(tgt, dict(base, capture_backend_enabled=False))
+    check("plan refused when backend off", p is None and "off" in why)
+    p, why = m.plan_capture(tgt, dict(base, capture_iface=""))
+    check("plan refused with no iface", p is None and "iface" in why)
+    p, why = m.plan_capture(tgt, dict(base, capture_iface="wlan0mon"))
+    check("plan refuses the pwnagotchi radio", p is None and "radio" in why.lower())
+    p, why = m.plan_capture({"kind": "wifi_target", "name": "NoBssid", "fields": {"ssid": "x"}}, base)
+    check("plan refused without a bssid", p is None and "BSSID" in why)
+
+    # --- the plan + command construction (the security-relevant bits) ---
+    p, why = m.plan_capture(tgt, base)
+    check("plan ok", p is not None and why == "ok")
+    cap = p["cmds"]["capture"]
+    check("capture is LOCKED to the one bssid", "--bssid" in cap and "aa:bb:cc:dd:ee:ff" in cap)
+    check("capture uses the 2nd iface", cap[-1] == "wlan1")
+    check("capture passes the channel", "-c" in cap and "6" in cap)
+    check("passive by default -> NO deauth command", p["cmds"]["deauth"] is None and p["deauth_count"] == 0)
+    check("out filename is pwnagotchi-style", p["out_basename"] == "LabAP_aabbccddeeff" and p["out_dir"] == "/hs")
+
+    # deauth only when asked, targeted at the AP, and hard-clamped
+    p, _ = m.plan_capture(tgt, dict(base, deauth_count=5))
+    d = p["cmds"]["deauth"]
+    check("deauth present when count>0", d is not None and d[0] == "aireplay-ng")
+    check("deauth is targeted at the bssid (-a), not broadcast", "-a" in d and "aa:bb:cc:dd:ee:ff" in d and "ff:ff:ff:ff:ff:ff" not in d)
+    check("deauth count carried", "5" in d)
+    p, _ = m.plan_capture(tgt, dict(base, deauth_count=9999))
+    check("deauth hard-clamped to MAX", p["deauth_count"] == m.MAX_DEAUTH)
+
+    # --- run_capture_backend with an injected executor (no radio needed) ---
+    seen = {}
+    def fake_exec(plan):
+        seen["plan"] = plan
+        return {"captured": True, "handshake": True, "file": plan["out_path"] + "-01.pcapng"}
+    r = m.run_capture_backend(tgt, base, execute=fake_exec)
+    check("backend ran + reports handshake", r["ok"] and r["ran"] and r["handshake"] and "handshake captured" in r["message"])
+    check("executor got the locked plan", seen["plan"]["bssid"] == "aa:bb:cc:dd:ee:ff")
+
+    # backend off -> gate-only, executor NEVER called
+    called = {"n": 0}
+    def boom(plan):
+        called["n"] += 1
+        raise AssertionError("must not run when backend off")
+    r = m.run_capture_backend(tgt, dict(base, capture_backend_enabled=False), execute=boom)
+    check("backend off -> authorized but not run", r["authorized"] and r["ran"] is False and called["n"] == 0)
+
+    # a crash in the executor is contained (never takes down the fire handler)
+    r = m.run_capture_backend(tgt, base, execute=lambda p: (_ for _ in ()).throw(RuntimeError("usb fell out")))
+    check("executor error contained", r["ran"] and "errored" in r["message"])
+
+    # dispatch: gate still refuses an un-allowlisted target BEFORE any backend
+    rd = m.fire_dispatch(tgt, allowlist=[], capture_cfg=base, capture_execute=boom)
+    check("dispatch: unauthorized never reaches backend", rd.get("authorized") is False and called["n"] == 0)
+    # dispatch: authorized + backend on -> runs capture
+    rd = m.fire_dispatch(tgt, allowlist=["AA:BB:CC:DD:EE:FF"], capture_cfg=base, capture_execute=fake_exec)
+    check("dispatch: authorized + backend on -> capture ran", rd.get("ran") is True and rd.get("handshake") is True)
+    # dispatch: authorized + backend off -> gate-only
+    rd = m.fire_dispatch(tgt, allowlist=["aa:bb:cc:dd:ee:ff"], capture_cfg=dict(base, capture_backend_enabled=False))
+    check("dispatch: authorized + backend off -> gate only", rd.get("authorized") is True and rd.get("ran") is None)
+
+
 def test_live_http():
     try:
         import flask  # noqa: F401
@@ -344,6 +412,7 @@ def main():
     test_fire_wifi_join()
     test_fire_wifi_target()
     test_fire_fleet()
+    test_capture_backend_gating_and_cmds()
     test_live_http()
     print()
     if failures:

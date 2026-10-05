@@ -1,7 +1,7 @@
 # netmanager-suite — design & safety notes
 
 Status: **software complete + sandbox-verified**; on-hardware pass in progress
-before graduation. Version `0.3.1`.
+before graduation. Version `0.4.0`.
 
 Since the backbone build this suite gained: all three fires wired, bulk import
 (handshakes + fleet.json, fleetctl `{"agents":…}` unwrapped), a floating toast +
@@ -56,28 +56,43 @@ this plugin is to enforce authorization and report state, not to attack:
    any frames** — that success means "the gate passed," and is the integration
    point for a backend you run on your own authorized lab hardware (below).
 
-## Wiring a real wireless-test backend (the authorized path)
+## The capture backend (built; authorized-path only)
 
-`fire_wifi_target(entry, allowlist)` is deliberately split: it decides
-authorization, and nothing else. The REFUSED branch is the safety gate; the
-authorized branch is where a real deauth/capture backend bolts on — **after**
-the gate has already said yes. To wire one:
+`fire_wifi_target(entry, allowlist)` stays a pure gate: it decides authorization
+and nothing else. `fire_dispatch` runs the capture backend **only after** the
+gate says yes, and only when it's enabled + configured. The backend is split for
+testability the same way `fire_fleet` is:
 
-- Keep the gate check exactly as-is. Only the authorized branch changes.
-- In that branch you have a vetted `bssid`/`ssid` (already on the allowlist).
-  Hand them to *your own* tool on *your own* lab hardware — e.g. shell out to a
-  capture/deauth script, or POST to a small local service you run. Make the
-  backend path a config option (default empty → stays gate-only), so the plugin
-  ships inert and a legit user opts in explicitly.
-- Fail safe: if the backend option is unset or the call errors, return the
-  current "authorized ✓ (gate only)" result — never fall through to attacking.
-- This mirrors the project rule (`CLAUDE.md`): keep the allowlist gate strict;
-  make legitimate use low-friction. netmanager owns the *gate*; the *frames* are
-  the user's own authorized hardware, on their own lab, against networks they own
-  or are allowed to test.
+- **`plan_capture(entry, cfg)`** — pure. Builds the exact commands or refuses,
+  and a refusal (`plan is None`) sends nothing. Enforced, unit-tested properties:
+  - two independent switches on top of the allowlist: `capture_backend_enabled`
+    **and** a set `capture_iface`;
+  - `capture_iface` must not be a `builtin_ifaces` entry (the pwnagotchi radio) —
+    capture runs on a **second** adapter, never the engine's;
+  - a **BSSID is required**, and `airodump-ng` is **locked to that one BSSID**
+    (`--bssid`) — no broad sweep;
+  - deauth is **off unless `deauth_count > 0`**, is **targeted at that BSSID**
+    (`aireplay-ng --deauth N -a <bssid>`, never a broadcast `ff:…`), and is
+    **hard-clamped to `MAX_DEAUTH` (64)** — a handshake nudge, not a jam.
+- **`run_capture_backend(entry, cfg, execute=…)`** — `execute(plan)` is the real
+  hardware step (injectable; tests pass a fake). It fails safe: backend off or a
+  plan refusal returns the gate-only "authorized ✓" result; an executor
+  exception is contained, never crashing the fire handler.
+- **`_execute_capture(plan)`** — the real tier-3 step (`# pragma: no cover`):
+  airodump locked to the BSSID for `capture_seconds`, optional bounded deauth,
+  then a best-effort handshake check (`hcxpcapngtool`/`aircrack-ng`), landing the
+  `.pcapng` in the handshakes dir so the rest of the bus (import, crack-house)
+  picks it up.
 
-Same shape as wifi_join's "needs a 2nd USB adapter": the remaining step is
-hardware/lab, not a software hole.
+This mirrors the project rule (`CLAUDE.md`): keep the allowlist gate strict; make
+legitimate use low-friction. netmanager owns the *gate* and the *orchestration*;
+the frames go out via standard tools on the user's own authorized hardware,
+against networks they own or are allowed to test.
+
+**Needs a real-hardware pass** (tier 3): the pure plan/gating/parse layer is
+sandbox-verified, but `_execute_capture` needs a 2nd monitor-mode USB adapter +
+aircrack-ng on the Pi — `netmanager_wifi_probe.sh` finds the adapter. Same
+category as wifi_join's "needs a 2nd USB adapter": a hardware step, not a hole.
 
 ## Safety posture
 
@@ -103,10 +118,11 @@ so it works on an offline pi and nothing phones home.
 
 **Remaining (hardware/lab, not software):**
 - The on-hardware pass that gates graduation (install per README, verify
-  on-device): the authorize → green-`✓` round trip, fleet fire against a real
-  agent, and the search/select/edit/delete feel on the real 50+ list.
-- The wifi_target **execution backend** (real deauth/capture) — wired on your own
-  authorized lab hardware; see "Wiring a real wireless-test backend" above.
+  on-device): the authorize → green-`✓` round trip (✅ done), fleet fire against a
+  real agent, and the search/select/edit/delete feel on the real 50+ list.
+- The capture backend's **tier-3 pass**: `_execute_capture` on a real 2nd
+  monitor-mode adapter + aircrack-ng (passive capture first, then a small
+  `deauth_count`). Gating/commands are sandbox-verified; the radio step isn't.
 - The wifi_join **connect** action — needs a 2nd USB WiFi adapter.
 
 **Future / nice-to-have:** more import sources (wigle CSV, the data-bus

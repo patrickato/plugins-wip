@@ -47,6 +47,23 @@ fleet_json_path = "/home/pi/.config/fleetctl/fleet.json"
 # ---------------------------------------------------------------------
 authorized_targets = []
 
+# =====================================================================
+# wifi_target CAPTURE BACKEND (the authorized-path "real test"). OFF by
+# default - a SECOND switch on top of the allowlist. Even for an authorized
+# target, nothing is captured/sent unless BOTH capture_backend_enabled=true
+# AND capture_iface names a SECOND adapter (never the pwnagotchi radio). Runs
+# standard tools (airodump-ng locked to the one BSSID + optional bounded,
+# targeted aireplay-ng deauth) and drops the handshake into handshakes_dir.
+# Requires a 2nd monitor-mode USB adapter + aircrack-ng.
+#   Find the adapter: sudo /etc/pwnagotchi/netmanager_ng/netmanager_wifi_probe.sh
+# =====================================================================
+capture_backend_enabled = false
+capture_iface = ""         # >>> USER INPUT REQUIRED when enabling <<< e.g. "wlan1" (NOT wlan0/wlan0mon)
+capture_seconds = 25
+deauth_count = 0           # 0 = passive capture (sends nothing). >0 = bounded targeted deauth (hard-capped)
+capture_out_dir = ""       # empty -> handshakes_dir
+builtin_ifaces = ["wlan0", "wlan0mon", "mon0"]
+
 # On-screen status (optional; shows the network count on the TFT).
 ui_enabled = true
 ui_position_x = -40
