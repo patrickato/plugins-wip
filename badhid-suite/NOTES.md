@@ -118,6 +118,37 @@ Decisions:
 4. A combo payload (e.g. `GUI r` then `STRINGLN notepad`) behaves on that host.
 5. `fire_on_enumerate` behaves only when explicitly enabled **and** armed.
 
+## Real-hardware pass RESULTS (2026-10-04, Pi 4 Model B Rev 1.5)
+
+First on-device run. Target: a Windows 11 laptop the Pi was plugged into (C port,
+laptop-powered); pi managed over ethernet.
+
+- ✅ **dwc2 / UDC.** Stock Bookworm shipped `dwc2,dr_mode=host` scoped to `[cm5]`
+  (no effect on a Pi 4) → no UDC. `enable_dwc2.sh` appended `[all]
+  dtoverlay=dwc2,dr_mode=otg`, left `[cm5]` + the `tft35a` display overlay
+  untouched; after reboot `fe980000.usb` appeared. SPI display and USB-A GPS
+  unaffected, as predicted.
+- ✅ **Gadget.** `setup_composite_gadget.sh --hid-only` created `/dev/hidg0`;
+  `free_udc_if_needed()` correctly unbound the legacy `g_ether` that held the UDC
+  (safe here — ethernet-managed). Management never dropped.
+- ✅ **Server / auth.** Control server came up; doctor saw `401` (token-gated).
+- ✅ **Typing is clean.** `welcome.duck` text arrived letter-perfect (no
+  dropped/garbled chars).
+- ⚠️→✅ **Stuck modifier (found & fixed on-device).** First `welcome.duck` fire
+  stuck the GUI key (Win+<key> chaos opened Explorer). Fixed: leading/trailing
+  keys-up + `modifier_settle_ms` after modifier combos, default
+  `inter_key_delay_ms` 5→12. Re-test: `open_calculator.duck` (Win+R) opened
+  Calculator cleanly, no stuck key; `rickroll.duck` opened the browser video.
+- ❗ **Notepad demos blocked by a broken Notepad on THAT laptop**
+  (`Microsoft.UI.Windowing.Core.dll` not found — a Windows fault, not badhid).
+  The Notepad-based demos (welcome/spooky_skull/ascii_cat/…) still need a visual
+  confirm on a machine with a working Notepad. The typing engine they use is
+  already confirmed, so this is expected to pass there.
+
+**Verdict:** core functionality validated on real hardware (gadget, auth, clean
+typing, modifier combos, app launch, URL/browser). Remaining before graduation:
+visually confirm the Notepad-based demos on a working-Notepad host.
+
 ## Deliberately out of scope here
 
 - Non-US keyboard layouts.
