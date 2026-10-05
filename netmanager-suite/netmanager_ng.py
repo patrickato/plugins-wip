@@ -492,10 +492,12 @@ def fire_wifi_target(entry, allowlist):
     who = bssid or ssid or "?"
     if not target_authorized(bssid, ssid, allowlist):
         return {"ok": False, "kind": "wifi_target", "authorized": False,
+                "authorize_hint": who,
                 "message": "REFUSED - '%s' is not on your authorized_targets "
-                           "allowlist (empty by default). Add its BSSID or SSID "
-                           "there to authorize - only networks you own or are "
-                           "authorized to test." % who}
+                           "allowlist (empty by default). To authorize it, run on "
+                           "the pi: sudo netmanagerctl.sh authorize %s - then try "
+                           "again. Only networks you own or are authorized to "
+                           "test." % (who, who)}
     return {"ok": True, "kind": "wifi_target", "authorized": True,
             "message": "authorized ✓ ('%s') - wire your wireless-test backend on "
                        "your lab hardware (deauth/capture). netmanager enforces "
@@ -576,7 +578,7 @@ def fire_dispatch(entry, post_fn=None, timeout=10, current_ssid=None, allowlist=
 
 class NetManagerNG(plugins.Plugin):
     __author__ = "built for this project's network-manager track"
-    __version__ = "0.3.0"
+    __version__ = "0.3.1"
     __license__ = "GPL3"
     __description__ = ("Phone-friendly Network Manager: a searchable, 50+-scale "
                        "list of your networks/targets with add/edit/delete, a "
@@ -993,6 +995,7 @@ _PAGE = r"""<!doctype html>
 <script>
 const TOK = new URLSearchParams(location.search).get("token") || "";
 const H = {"Content-Type":"application/json","Authorization":"Bearer "+TOK};
+const CTL = "/etc/pwnagotchi/netmanager_ng/netmanagerctl.sh";  // the authorize helper
 let STATE = {networks:[], selected:null, current_ssid:null, counts:{}, total:0};
 const KLABEL = {wifi_join:"wifi join", fleet:"fleet", wifi_target:"wifi target"};
 
@@ -1111,12 +1114,16 @@ async function fire(id){
   const msg = (r.message||r.error||JSON.stringify(r));
   if(r.stub){ toast(label+": not wired — "+msg,"info"); return; }
   if(r.ok){ toast("✓ "+label+": "+msg,"ok"); return; }
-  // a refused wifi_target gets an actionable "how to authorize" hint
+  // a refused wifi_target gets an actionable "how to authorize" hint: the exact
+  // one-command helper, with this target's identifier already filled in.
   if(e && e.kind==="wifi_target" && r.authorized===false){
     const who = (e.fields&&(e.fields.bssid||e.fields.ssid)) || e.name || "?";
-    toast("✗ "+label+" — REFUSED (not authorized).",
+    toast("✗ "+label+" — REFUSED (not authorized to test it yet).",
           "err",
-          "To allow it: add \""+who+"\" to authorized_targets under [main.plugins.netmanager_ng] in /etc/pwnagotchi/config.toml, then restart pwnagotchi. Only networks you own or are authorized to test.");
+          "To allow it, run this on the pi (SSH), then tap Fire Test again:\n\n"+
+          "sudo "+CTL+" authorize "+who+"\n\n"+
+          "It adds the target, restarts pwnagotchi, and is reversible (… deauthorize "+who+"). "+
+          "Only authorize networks you own or are explicitly allowed to test.");
     return;
   }
   toast("✗ "+label+": "+msg,"err");

@@ -278,6 +278,7 @@ def test_live_http():
         check("live: page has floating toast", 'id="toast"' in body and "function toast(" in body)
         check("live: page has first-run welcome + help", 'id="welcome"' in body and "New here?" in body)
         check("live: page has per-row edit", "function editNet(" in body and "/api/update" in body)
+        check("live: refused hint names the ctl helper", "netmanagerctl.sh" in body and "authorize " in body)
         st, b = call("/api/add", {"name": "lab", "kind": "fleet", "fields": {"url": "http://x:8084", "token": "z"}})
         nid = json.loads(b)["id"]
         check("live: add ok", st == 200)
