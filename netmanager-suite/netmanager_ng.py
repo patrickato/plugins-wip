@@ -633,7 +633,14 @@ def _execute_capture(plan):  # pragma: no cover - real hardware (needs a 2nd mon
     import shutil
     import subprocess as sp
     cmds = plan["cmds"]
+    iface = plan["iface"]
     os.makedirs(plan["out_dir"], exist_ok=True)
+    # Put THIS adapter in monitor mode via iw (keeps the name - airmon-ng would
+    # rename wlan1 -> wlan1mon and break capture_iface). Harmless if already monitor.
+    for c in (["ip", "link", "set", iface, "down"],
+              ["iw", "dev", iface, "set", "type", "monitor"],
+              ["ip", "link", "set", iface, "up"]):
+        sp.run(c, capture_output=True, timeout=15)
     if cmds.get("channel"):
         sp.run(cmds["channel"], capture_output=True, timeout=15)
     # airodump in the background for the capture window
