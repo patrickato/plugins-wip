@@ -55,5 +55,25 @@ network (`test_fleetctl.py`).
   enrolled with. The architecture (explicit enrollment both ways) is ready for
   it.
 - Task templates with arguments; structured/full-JSON output; save-to-file.
-- **B3:** stage a BadHID payload to an agent, fire on plug-in (where A and B
-  meet) — the most powerful combination and the one to treat with the most care.
+
+## B3 — BadHID over the fleet (built, with the most care)
+
+`badhid-stage` / `badhid-fire` let the controller push a payload to an agent's
+BadHID and fire it. It is deliberately thin — it *composes* existing gated
+pieces and adds nothing that bypasses them:
+
+- **Staging** goes through BadHID's new `/stage` endpoint, which is token-gated,
+  path-safe (writes only inside `payloads_dir`), **parse-validated**, and can be
+  switched off per-agent (`allow_remote_stage=false`). No payloads are shipped;
+  the operator authors them. (Verified live: a real agent accepts a valid stage,
+  401s a wrong token, 400s a traversal attempt.)
+- **Firing** goes through BadHID's existing `/quickfire` (token + arm model).
+  The controller can't make BadHID do anything BadHID wouldn't do locally.
+- **The extra caveat, made loud:** remote firing means the operator is *not*
+  physically at the target, and a USB keyboard still cannot verify the host.
+  `badhid-fire` therefore requires an interactive `yes` (or an explicit `--yes`
+  in trusted scripts), and the docs state plainly that the physical
+  responsibility — only plugging the agent into owned/authorized hardware — is
+  entirely the operator's and cannot be enforced in software. This is the one
+  piece to treat with the most care, and it's built to make the operator stop
+  and confirm.

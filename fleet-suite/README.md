@@ -66,12 +66,40 @@ done: 2/2 ok
 
 | Command | What it does |
 |---|---|
-| `enroll <label> <url> <token>` | add an agent you own (explicit) |
+| `enroll <label> <url> <token> [--badhid-url U --badhid-token T]` | add an agent you own (explicit) |
 | `remove <label>` | drop an agent |
 | `list [--ping]` | list enrolled agents (`--ping` tests each) |
 | `tasks <label>` | show one agent's named tasks |
 | `run <task> [--all\|--agents a,b]` | fan a named task out |
 | `run --command "<cmd>" ...` | arbitrary command (only runs on free-mode agents) |
+| `badhid-stage <label> <file.duck> [--as name]` | **(B3)** upload a payload to an agent's BadHID |
+| `badhid-fire <label> <payload> [--target T] [--yes]` | **(B3)** remote-fire a payload on an agent |
+
+## B3 — stage a BadHID payload to an agent and fire it
+
+Where A (BadHID) and B (fleet) meet. If an agent also runs **badhid-ng**, enroll
+it with its BadHID endpoint, then push a payload and fire it remotely:
+
+```bash
+fleetctl enroll pi4-field http://pi4:8084 <remoteexec-token> \
+  --badhid-url http://pi4:8083 --badhid-token <badhid-token>
+fleetctl badhid-stage pi4-field ./my_payload.duck
+fleetctl badhid-fire  pi4-field my_payload.duck --target "the-old-dell"
+```
+
+**Read this before you ever remote-fire.** This is the most powerful — and most
+dangerous — thing in the whole toolkit:
+
+- Staging only writes a **parse-validated** payload into the agent's
+  `payloads_dir` (path-safe, token-gated, and the agent can refuse it entirely
+  with `allow_remote_stage = false`). It ships **no** payloads — you author them.
+- Firing triggers the agent's BadHID, which types into **whatever that agent is
+  physically plugged into**. A USB keyboard cannot verify the host, and **you
+  are not there to check.** The software *cannot* make this safe for you.
+- So `badhid-fire` makes you type `yes` at a loud prompt (skip with `--yes` only
+  in scripts you trust). **Only ever fire at an agent you have confirmed is
+  plugged into hardware you own or are authorized to test.** Everything is
+  token-gated and logged, but the physical responsibility is entirely yours.
 
 ## What this is / isn't
 

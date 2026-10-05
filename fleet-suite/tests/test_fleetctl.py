@@ -95,6 +95,32 @@ def test_run_on_agent_nonjson():
     check("non-JSON / 401 handled", r["ok"] is False and r["_status"] == 401)
 
 
+def test_b3_badhid_helpers():
+    # badhid_endpoint only resolves when the agent was enrolled with badhid info
+    agent = {"url": "http://pi:8084", "token": "t",
+             "badhid": {"url": "http://pi:8083", "token": "bh"}}
+    base, tok = mod.badhid_endpoint(agent)
+    check("badhid_endpoint resolves", base == "http://pi:8083" and tok == "bh")
+    check("no badhid info -> (None,None)",
+          mod.badhid_endpoint({"url": "x", "token": "t"}) == (None, None))
+
+    calls = []
+
+    def fake(url, token, payload, timeout):
+        import json
+        calls.append((url, token, payload))
+        return 200, json.dumps({"ok": True, "name": payload.get("name"), "stdout": "ok"})
+
+    r = mod.stage_to_agent("pi", agent, "x.duck", "STRING hi\n", 5, post_fn=fake)
+    check("stage hits /stage with badhid token",
+          r["ok"] and calls[-1][0].endswith("/stage") and calls[-1][1] == "bh")
+    r = mod.fire_on_agent("pi", agent, "x.duck", "lab", 5, post_fn=fake)
+    check("fire hits /quickfire", r["ok"] and calls[-1][0].endswith("/quickfire"))
+    # an agent with no badhid endpoint refuses stage/fire cleanly
+    r = mod.stage_to_agent("x", {"url": "u", "token": "t"}, "a.duck", "x", 5, post_fn=fake)
+    check("stage without badhid endpoint refused", r["ok"] is False and "no badhid" in r["error"])
+
+
 def main():
     test_config_roundtrip()
     test_normalize_url()
@@ -102,6 +128,7 @@ def main():
     test_fan_out_injected()
     test_fan_out_handles_agent_error()
     test_run_on_agent_nonjson()
+    test_b3_badhid_helpers()
     print()
     if failures:
         print(f"{len(failures)} FAILURE(S): {failures}"); sys.exit(1)

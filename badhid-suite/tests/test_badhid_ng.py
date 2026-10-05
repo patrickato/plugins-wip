@@ -367,6 +367,25 @@ def test_http_oneclick_flow():
     check("quickfire honors allow_quickfire=false", w2 == [])
 
 
+def test_stage_payload():
+    tmp = tempfile.mkdtemp()
+    p = make_plugin(payloads_dir=tmp, allow_remote_stage=True)
+    r, s = p.stage_payload("new.duck", "STRING hi\nENTER\n")
+    check("stage writes a valid payload", r.get("ok") and s == 200
+          and os.path.isfile(os.path.join(tmp, "new.duck")))
+    r, s = p.stage_payload("../evil.duck", "STRING x\n")
+    check("stage refuses path traversal", r.get("ok") is False and s == 400)
+    r, s = p.stage_payload("evil.sh", "STRING x\n")
+    check("stage refuses non-.duck/.txt", r.get("ok") is False and s == 400)
+    r, s = p.stage_payload("broken.duck", "DELAY nope\n")
+    check("stage refuses unparseable payload", r.get("ok") is False and s == 400)
+    r, s = p.stage_payload("x.duck", "")
+    check("stage refuses empty content", r.get("ok") is False and s == 400)
+    p2 = make_plugin(payloads_dir=tmp, allow_remote_stage=False)
+    r, s = p2.stage_payload("x.duck", "STRING x\n")
+    check("stage honors allow_remote_stage=false (403)", s == 403)
+
+
 def test_shipped_payloads():
     pdir = os.path.join(HERE, "..", "payloads")
     files = sorted(f for f in os.listdir(pdir) if f.endswith(".duck"))
@@ -403,6 +422,7 @@ def main():
     test_ui_hooks_safe()
     test_write_timeout_option()
     test_http_oneclick_flow()
+    test_stage_payload()
     test_shipped_payloads()
 
     print()

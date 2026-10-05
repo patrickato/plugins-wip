@@ -91,6 +91,7 @@ else
     echo "max_actions = 20000"
     echo "write_timeout_seconds = 10"
     echo "allow_quickfire = true"
+    echo "allow_remote_stage = true"
     echo "ui_enabled = true"
     echo "ui_position_x = -55"
     echo "ui_position_y = 10"

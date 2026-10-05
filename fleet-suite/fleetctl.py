@@ -118,6 +118,60 @@ def _http_get(url, token, timeout):  # pragma: no cover - real network
         return resp.status, resp.read().decode()
 
 
+def badhid_endpoint(agent):
+    """(url_base, token) for an agent's BadHID API, or (None, None) if the agent
+    wasn't enrolled with badhid info. B3 uses this."""
+    bh = (agent or {}).get("badhid") or {}
+    url = bh.get("url")
+    if not url:
+        return None, None
+    return normalize_url(url), bh.get("token", "")
+
+
+def _post_badhid(label, base, token, path, payload, timeout, post_fn):
+    """POST to a badhid endpoint, capturing HTTP status (incl. error bodies)."""
+    post_fn = post_fn or _http_post
+    url = base + path
+    try:
+        status, text = post_fn(url, token, payload, timeout)
+    except urllib.error.HTTPError as exc:
+        status = exc.code
+        try:
+            text = exc.read().decode()
+        except Exception:
+            text = ""
+    except Exception as exc:
+        return {"ok": False, "_agent": label, "_status": None, "error": str(exc)}
+    try:
+        data = json.loads(text)
+    except Exception:
+        data = {"raw": text[:200]}
+    data["_agent"] = label
+    data["_status"] = status
+    data.setdefault("ok", status == 200)
+    return data
+
+
+def stage_to_agent(label, agent, name, content, timeout, post_fn=None):
+    """POST a payload to an agent's BadHID /stage. Returns a result dict."""
+    base, token = badhid_endpoint(agent)
+    if base is None:
+        return {"ok": False, "_agent": label, "error": "agent has no badhid endpoint "
+                "(enroll with --badhid-url/--badhid-token)"}
+    return _post_badhid(label, base, token, "/stage",
+                        {"name": name, "content": content}, timeout, post_fn)
+
+
+def fire_on_agent(label, agent, payload_name, target, timeout, post_fn=None):
+    """POST to an agent's BadHID /quickfire (arm+fire). Returns a result dict."""
+    base, token = badhid_endpoint(agent)
+    if base is None:
+        return {"ok": False, "_agent": label, "error": "agent has no badhid endpoint"}
+    return _post_badhid(label, base, token, "/quickfire",
+                        {"payload": payload_name, "target": target or f"fleet:{label}"},
+                        timeout, post_fn)
+
+
 def run_on_agent(label, agent, payload, timeout, post_fn=None):
     """Call one agent's /run. Returns a result dict (never raises)."""
     post_fn = post_fn or _http_post
@@ -166,10 +220,62 @@ def fan_out(selected, payload, timeout, post_fn=None, max_workers=8):
 def cmd_enroll(args):
     agents = load_agents(args.config)
     url = normalize_url(args.url)
-    agents[args.label] = {"url": url, "token": args.token}
+    entry = {"url": url, "token": args.token}
+    if getattr(args, "badhid_url", None):
+        entry["badhid"] = {"url": normalize_url(args.badhid_url),
+                           "token": getattr(args, "badhid_token", "") or ""}
+    agents[args.label] = entry
     save_agents(args.config, agents)
     print(f"enrolled '{args.label}' -> {url}  (token stored in {args.config}, 0600)")
+    if "badhid" in entry:
+        print(f"  badhid endpoint: {entry['badhid']['url']}")
     print("tip: `fleetctl list --ping` to confirm it answers.")
+
+
+def cmd_badhid_stage(args):
+    agents = load_agents(args.config)
+    if args.label not in agents:
+        raise SystemExit(f"not enrolled: {args.label}")
+    try:
+        with open(args.file, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except Exception as exc:
+        raise SystemExit(f"error: can't read {args.file}: {exc}")
+    name = args.as_name or os.path.basename(args.file)
+    r = stage_to_agent(args.label, agents[args.label], name, content, args.timeout)
+    if r.get("ok"):
+        print(f"staged '{name}' -> {args.label}")
+    else:
+        raise SystemExit(f"stage failed on {args.label}: {r.get('error') or r}")
+
+
+def cmd_badhid_fire(args):
+    agents = load_agents(args.config)
+    if args.label not in agents:
+        raise SystemExit(f"not enrolled: {args.label}")
+    base, _ = badhid_endpoint(agents[args.label])
+    if base is None:
+        raise SystemExit(f"{args.label} has no badhid endpoint "
+                         "(re-enroll with --badhid-url/--badhid-token)")
+    # Loud safety friction: remote firing means you are NOT at the target.
+    print("=" * 62)
+    print(" REMOTE FIRE - BadHID keystroke injection")
+    print(f"   agent   : {args.label}  ({base})")
+    print(f"   payload : {args.payload}")
+    print(" A USB keyboard cannot verify which machine it's plugged into, and")
+    print(" you are NOT physically there. Only fire if you have CONFIRMED this")
+    print(" agent is plugged into hardware you own or are authorized to test.")
+    print("=" * 62)
+    if not args.yes:
+        ans = input(" Type 'yes' to fire: ").strip().lower()
+        if ans != "yes":
+            print("aborted.")
+            return
+    r = fire_on_agent(args.label, agents[args.label], args.payload, args.target, args.timeout)
+    if r.get("ok"):
+        print(f"fired '{args.payload}' on {args.label}: {r.get('stdout') or r.get('raw') or 'ok'}")
+    else:
+        raise SystemExit(f"fire failed on {args.label}: {r.get('error') or r}")
 
 
 def cmd_remove(args):
@@ -249,7 +355,20 @@ def build_parser():
 
     pe = sub.add_parser("enroll", help="add an agent you own")
     pe.add_argument("label"); pe.add_argument("url"); pe.add_argument("token")
+    pe.add_argument("--badhid-url", help="optional: this agent's BadHID API URL (for B3)")
+    pe.add_argument("--badhid-token", help="optional: this agent's BadHID token")
     pe.set_defaults(func=cmd_enroll)
+
+    ps = sub.add_parser("badhid-stage", help="(B3) upload a payload to an agent's BadHID")
+    ps.add_argument("label"); ps.add_argument("file", help="local .duck payload")
+    ps.add_argument("--as", dest="as_name", help="name to store it as on the agent")
+    ps.set_defaults(func=cmd_badhid_stage)
+
+    pf = sub.add_parser("badhid-fire", help="(B3) remote-fire a payload on an agent's BadHID")
+    pf.add_argument("label"); pf.add_argument("payload", help="payload name on the agent")
+    pf.add_argument("--target", help="audit label for the target")
+    pf.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
+    pf.set_defaults(func=cmd_badhid_fire)
 
     pr = sub.add_parser("remove", help="drop an agent")
     pr.add_argument("label"); pr.set_defaults(func=cmd_remove)

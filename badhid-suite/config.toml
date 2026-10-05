@@ -120,6 +120,11 @@ write_timeout_seconds = 10
 # false to force the deliberate two-step arm-then-fire on the web UI too.
 allow_quickfire = true
 
+# Allow a token-authenticated client (the fleet controller, B3) to upload a
+# payload to payloads_dir via POST /stage. Path-safe (payloads_dir only) and
+# parse-validated before writing. false = refuse remote staging entirely.
+allow_remote_stage = true
+
 # ---------------------------------------------------------------------
 # On-screen status (optional; monochrome-safe for the TFT)
 # ---------------------------------------------------------------------

@@ -80,10 +80,11 @@ import time
 import pwnagotchi.plugins as plugins
 
 try:
-    from flask import Response, render_template_string, request  # noqa: F401
+    from flask import Response, jsonify, render_template_string, request  # noqa: F401
     from werkzeug.serving import make_server
 except Exception:  # pragma: no cover - flask/werkzeug always present on-device
     Response = None
+    jsonify = None
     render_template_string = None
     make_server = None
 
@@ -181,6 +182,13 @@ DEFAULTS = {
     # fires a payload in one action (convenience for a phone). It still needs
     # the auth token. Set false to force the deliberate two-step arm-then-fire.
     "allow_quickfire": True,
+
+    # Allow a token-authenticated client (e.g. the fleet controller, B3) to
+    # upload a payload to payloads_dir via POST /stage. The upload is path-safe
+    # (payloads_dir only) and parse-validated before it's written. Set false to
+    # refuse remote staging entirely (payloads then only arrive via the pi's
+    # filesystem).
+    "allow_remote_stage": True,
 
     # On-screen one-glyph status (optional; monochrome-safe for the TFT).
     "ui_enabled": True,
@@ -887,15 +895,46 @@ class BadHIDNG(plugins.Plugin):
 
     def _payload_path(self, name):
         """Resolve a payload name safely inside payloads_dir (no traversal)."""
-        if not name or "/" in name or "\\" in name or name.startswith("."):
+        p = self._stage_target(name)
+        return p if (p and os.path.isfile(p)) else None
+
+    def _stage_target(self, name):
+        """Safe absolute path for a payload NAME inside payloads_dir (the file
+        need not exist yet - used for staging). None if the name is unsafe."""
+        if not name or "/" in name or "\\" in name or str(name).startswith("."):
             return None
-        if not name.lower().endswith((".duck", ".txt")):
+        if not str(name).lower().endswith((".duck", ".txt")):
             return None
         d = os.path.abspath(self._opt("payloads_dir"))
         path = os.path.abspath(os.path.join(d, name))
         if os.path.commonpath([d, path]) != d:
             return None
-        return path if os.path.isfile(path) else None
+        return path
+
+    def stage_payload(self, name, content):
+        """Validate + write an uploaded payload into payloads_dir. Returns
+        (result_dict, http_status). Gated by allow_remote_stage; path-safe;
+        parse-validated. Pure enough to unit-test (only writes a file)."""
+        if not self._opt_bool("allow_remote_stage", True):
+            return {"ok": False, "error": "remote staging disabled (allow_remote_stage=false)"}, 403
+        path = self._stage_target(name)
+        if path is None:
+            return {"ok": False, "error": "invalid payload name (payloads_dir only, .duck/.txt)"}, 400
+        if content is None or not str(content).strip():
+            return {"ok": False, "error": "empty payload content"}, 400
+        try:
+            parse_ducky(str(content), max_actions=self._opt_int("max_actions", 20000))
+        except DuckyParseError as exc:
+            return {"ok": False, "error": f"payload won't parse: {exc}"}, 400
+        try:
+            self._ensure_payloads_dir()
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(str(content))
+        except Exception as exc:
+            return {"ok": False, "error": f"write failed: {exc}"}, 500
+        logging.warning("[badhid_ng] STAGED payload %s (%d bytes)",
+                        os.path.basename(path), len(str(content)))
+        return {"ok": True, "name": os.path.basename(path)}, 200
 
     # ------------------------------------------------------------------
     # control server
@@ -926,6 +965,7 @@ class BadHIDNG(plugins.Plugin):
         app.add_url_rule("/disarm", "disarm", self._http_disarm, methods=["POST"])
         app.add_url_rule("/fire", "fire", self._http_fire, methods=["POST"])
         app.add_url_rule("/quickfire", "quickfire", self._http_quickfire, methods=["POST"])
+        app.add_url_rule("/stage", "stage", self._http_stage, methods=["POST"])
 
         try:
             self._server = make_server(bind_host, port, app, threaded=True)
@@ -956,6 +996,8 @@ class BadHIDNG(plugins.Plugin):
             return self._http_fire()
         if p == "quickfire" and request.method == "POST":
             return self._http_quickfire()
+        if p == "stage" and request.method == "POST":
+            return self._http_stage()
         return Response("not found", status=404)
 
     # --- auth ---
@@ -1037,6 +1079,21 @@ class BadHIDNG(plugins.Plugin):
         target = request.values.get("target")
         ok, msg = self._fire(name, "web UI", target_label=target)
         return self._reply(msg, ok, msg)
+
+    def _http_stage(self):  # pragma: no cover
+        # upload a payload to payloads_dir (path-safe + parse-validated, gated)
+        if not self._authed(request):
+            return Response("unauthorized", status=401)
+        body = {}
+        try:
+            if request.is_json:
+                body = request.get_json(silent=True) or {}
+        except Exception:
+            body = {}
+        name = request.values.get("name") or body.get("name")
+        content = request.values.get("content") or body.get("content")
+        res, status = self.stage_payload(name, content)
+        return jsonify(res), status
 
     def _http_quickfire(self):  # pragma: no cover
         # one-tap: arm + fire in a single action (still token-gated)
