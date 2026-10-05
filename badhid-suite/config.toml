@@ -99,9 +99,14 @@ authorized_targets = []
 # Typing timing / limits
 # ---------------------------------------------------------------------
 # Delay between individual keystrokes (ms) so fast hosts don't drop keys.
-inter_key_delay_ms = 5
+# 12 is a safe default; drop to 5 for speed on a host that keeps up.
+inter_key_delay_ms = 12
 # Implicit delay between payload lines (ms). DEFAULTDELAY in a payload overrides.
 default_delay_ms = 0
+# Extra pause (ms) after a key that used a modifier (Ctrl/Alt/Shift/GUI), so the
+# host registers the release before the next key - prevents a "stuck Windows
+# key" turning a payload into Win+<key> shortcuts. Raise if combos misbehave.
+modifier_settle_ms = 40
 # Hard cap on parsed actions per payload, so a runaway file can't type forever.
 max_actions = 20000
 

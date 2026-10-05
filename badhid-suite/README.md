@@ -228,7 +228,9 @@ commented block). Highlights:
 - `hid_device` (`/dev/hidg0`), `bind_scope`, `port` (8083).
 - `payloads_dir`, `default_payload`.
 - `arm_window_seconds` (120), `arm_one_shot` (true), `fire_on_enumerate` (false).
-- `inter_key_delay_ms` (5) — raise if a fast host drops characters.
+- `inter_key_delay_ms` (12) — raise if a fast host drops characters.
+- `modifier_settle_ms` (40) — pause after a modifier combo so the host registers
+  the release; raise if a Win+R / Ctrl combo "sticks".
 - `write_timeout_seconds` (10) — a fire aborts with a clear error if no host is
   reading (e.g. not plugged into a powered/awake target), instead of hanging.
 - `authorized_targets` (advisory log only — see Limitations), `ui_*`.
@@ -264,7 +266,8 @@ Run **`sudo ./badhid_doctor.sh`** first — it pinpoints the broken link. Common
 | gadget script: `/dev/hidg0 missing` after bind | legacy `g_ether` grabbed the controller | the script auto-unbinds it; re-run; or `sudo ./setup_composite_gadget.sh --hid-only` |
 | server won't start, log: token refused | `auth_token` blank/placeholder/<12 chars | set a long random token in config, restart |
 | fire error: "HID device not accepting input" | Pi isn't plugged into a powered, awake, enumerated target | plug into the target; wake it; check the cable |
-| characters dropped/garbled on the target | host too slow for the type speed | raise `inter_key_delay_ms` (e.g. 10–20) |
+| characters dropped/garbled on the target | host too slow for the type speed | raise `inter_key_delay_ms` (e.g. 15–25) |
+| a modifier "sticks" (Win+R turns typing into Win+key shortcuts, Explorer opens, etc.) | host missed the modifier release | raise `modifier_settle_ms` (e.g. 60–80); streams already lead and end with a keys-up report |
 | wrong symbols typed | non-US keyboard layout on the target | US layout only for now |
 | lost `usb0` after the gadget came up | expected if you used composite on an ethernet-managed Pi | you manage over ethernet; or `--teardown`, or reboot |
 | want it all gone | — | `sudo ./badhid_restore.sh` (add `--reboot` to fully clear the gadget) |

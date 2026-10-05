@@ -162,8 +162,13 @@ DEFAULTS = {
 
     # Typing timing. inter_key_delay_ms slows typing so fast hosts don't drop
     # keystrokes; default_delay_ms is the implicit DELAY between payload lines.
-    "inter_key_delay_ms": 5,
+    # (12ms is a safe default; drop to 5 for speed on a host that keeps up.)
+    "inter_key_delay_ms": 12,
     "default_delay_ms": 0,
+    # Extra pause after a key that used a modifier (Ctrl/Alt/Shift/GUI), so the
+    # host registers the release before the next key - prevents a "stuck
+    # Windows key" turning a payload into Win+<key> shortcuts.
+    "modifier_settle_ms": 40,
     # Hard cap on a single payload's parsed action count, so a runaway/huge
     # file can't type forever.
     "max_actions": 20000,
@@ -419,10 +424,19 @@ def _int_arg(rest, line_no, name):
         raise DuckyParseError(f"line {line_no}: {name} needs an integer (ms)")
 
 
-def actions_to_reports(actions, default_delay_ms=0):
+def actions_to_reports(actions, default_delay_ms=0, modifier_settle_ms=40):
     """Flatten parsed actions into an ordered list of ('report', bytes) and
-    ('delay', ms) tuples ready to stream to the HID device. Pure - no I/O."""
-    out = []
+    ('delay', ms) tuples ready to stream to the HID device. Pure - no I/O.
+
+    Two reliability measures bake in here (learned from a real-hardware test
+    where a modifier key stuck and turned a payload into Win+<key> chaos):
+      * a leading all-keys-up report + settle, so a payload never starts with a
+        modifier left held from a previous fire or a half-enumerated gadget;
+      * an explicit settle delay AFTER any key report that carried a modifier
+        (Ctrl/Alt/Shift/GUI), so the host definitely processes the release
+        before the next key - this is what stops a "stuck Windows key".
+    """
+    out = [("report", RELEASE), ("delay", max(30, modifier_settle_ms))]
     for act in actions:
         t = act["type"]
         if t == "string":
@@ -432,14 +446,21 @@ def actions_to_reports(actions, default_delay_ms=0):
             if default_delay_ms:
                 out.append(("delay", default_delay_ms))
         elif t == "key":
-            out.append(("report", act["report"]))
+            rep = act["report"]
+            out.append(("report", rep))
             out.append(("report", RELEASE))
-            if default_delay_ms:
+            # rep[0] is the modifier byte; if any modifier was held, give the
+            # host extra time to register the release before the next key.
+            if rep[0] != 0 and modifier_settle_ms:
+                out.append(("delay", modifier_settle_ms))
+            elif default_delay_ms:
                 out.append(("delay", default_delay_ms))
         elif t == "delay":
             out.append(("delay", act["ms"]))
         elif t == "defaultdelay":
             default_delay_ms = act["ms"]
+    # always end keys-up
+    out.append(("report", RELEASE))
     return out
 
 
@@ -759,8 +780,10 @@ class BadHIDNG(plugins.Plugin):
         except Exception as exc:
             return False, f"could not read payload: {exc}"
 
-        stream = actions_to_reports(actions,
-                                    default_delay_ms=self._opt_int("default_delay_ms", 0))
+        stream = actions_to_reports(
+            actions,
+            default_delay_ms=self._opt_int("default_delay_ms", 0),
+            modifier_settle_ms=self._opt_int("modifier_settle_ms", 40))
 
         targets = self._opt("authorized_targets") or []
         logging.warning(

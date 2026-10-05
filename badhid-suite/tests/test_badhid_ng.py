@@ -123,23 +123,47 @@ def test_parser_repeat_and_maxactions():
 
 # --- reports ---------------------------------------------------------------
 def test_reports():
+    # streams now start with a leading keys-up (RELEASE)+settle and end keys-up
     acts = mod.parse_ducky("STRING ab\n")
     stream = mod.actions_to_reports(acts)
-    # 'a' down, release, 'b' down, release
-    check("string 'ab' -> 4 report events", len(stream) == 4)
-    check("first report is 'a' down", stream[0] == ("report", mod._report(0, 0x04)))
-    check("second report is release", stream[1] == ("report", mod.RELEASE))
+    check("stream starts with a leading release", stream[0] == ("report", mod.RELEASE))
+    check("stream ends keys-up", stream[-1] == ("report", mod.RELEASE))
+    reports = [s for s in stream if s[0] == "report"]
+    # leading release + a_down + a_up + b_down + b_up + trailing release = 6
+    check("string 'ab' -> 6 report events (incl leading/trailing release)",
+          len(reports) == 6)
+    check("'a' down present", ("report", mod._report(0, 0x04)) in stream)
 
     acts2 = mod.parse_ducky("ENTER\n")
     stream2 = mod.actions_to_reports(acts2)
-    check("key -> down then release",
-          stream2[0][1] == mod._report(0, mod.NAMED_KEYS["ENTER"])
-          and stream2[1][1] == mod.RELEASE)
+    check("key down present after leading release",
+          ("report", mod._report(0, mod.NAMED_KEYS["ENTER"])) in stream2)
 
     acts3 = mod.parse_ducky("DEFAULTDELAY 40\nSTRING a\n")
     stream3 = mod.actions_to_reports(acts3)
-    check("DEFAULTDELAY applies after a string",
-          ("delay", 40) in stream3)
+    check("DEFAULTDELAY applies after a string", ("delay", 40) in stream3)
+
+
+def test_modifier_settle():
+    # a modifier combo (GUI r) must be followed by a settle delay so the host
+    # registers the release (the fix for the stuck-Windows-key bug)
+    acts = mod.parse_ducky("GUI r\n")
+    stream = mod.actions_to_reports(acts, modifier_settle_ms=40)
+    # find the combo report, confirm a release then a 40ms settle follow it
+    idx = next(i for i, s in enumerate(stream)
+               if s[0] == "report" and s[1][0] != 0)
+    check("modifier combo report has a modifier byte", stream[idx][1][0] == mod.MOD_LGUI)
+    check("release follows the combo", stream[idx + 1] == ("report", mod.RELEASE))
+    check("settle delay follows the release", stream[idx + 2] == ("delay", 40))
+    # a non-modifier key gets no settle: only the single leading settle is 40ms
+    acts2 = mod.parse_ducky("ENTER\n")
+    s2 = mod.actions_to_reports(acts2, modifier_settle_ms=40)
+    forty = [d for d in s2 if d == ("delay", 40)]
+    check("plain key has only the leading settle (no post-key settle)", len(forty) == 1)
+    # the modifier case has two 40ms delays (leading + post-combo settle)
+    two = [d for d in mod.actions_to_reports(mod.parse_ducky("GUI r\n"),
+                                             modifier_settle_ms=40) if d == ("delay", 40)]
+    check("modifier key adds a second settle", len(two) == 2)
 
 
 # --- token / bind ----------------------------------------------------------
@@ -314,6 +338,7 @@ def main():
     test_parser_errors()
     test_parser_repeat_and_maxactions()
     test_reports()
+    test_modifier_settle()
     test_token()
     test_bind_plan()
     test_arm_state()
