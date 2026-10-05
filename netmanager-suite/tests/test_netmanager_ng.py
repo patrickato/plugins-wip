@@ -137,6 +137,7 @@ def test_import_parsers():
     check("hs .gps.json ignored", m.parse_handshake_filename("ARLO_9c3dcf59ac14.gps.json") is None)
     check("hs ssid with underscores", m.parse_handshake_filename("My_Home_Net_001122334455.pcap") == ("My_Home_Net", "00:11:22:33:44:55"))
     check("hs cracked suffix", m.parse_handshake_filename("X_aabbccddeeff.pcap.cracked") == ("X", "aa:bb:cc:dd:ee:ff"))
+    check("hs .cap (airodump, normalized)", m.parse_handshake_filename("dad24_18a5e96534d2.cap") == ("dad24", "18:a5:e9:65:34:d2"))
     check("hs bssid only", m.parse_handshake_filename("aabbccddeeff.pcap") == ("", "aa:bb:cc:dd:ee:ff"))
     check("hs ssid only", m.parse_handshake_filename("JustName.pcap") == ("JustName", ""))
     check("non-handshake ignored", m.parse_handshake_filename("notes.txt") is None)

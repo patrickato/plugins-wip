@@ -301,7 +301,7 @@ def search_networks(store, q="", kind=""):
 
 # --- bulk import (pure parsers; the plugin reads the files) -----------------
 
-_HS_SUFFIXES = (".pcapng", ".pcap.cracked", ".pcap", ".pmkid", ".22000", ".hc22000", ".2500", ".hccapx")
+_HS_SUFFIXES = (".pcapng", ".pcap.cracked", ".pcap", ".cap", ".pmkid", ".22000", ".hc22000", ".2500", ".hccapx")
 _BSSID_TAIL_RE = re.compile(r"_([0-9a-fA-F]{12})$")
 _BSSID_FULL_RE = re.compile(r"^[0-9a-fA-F]{12}$")
 
@@ -659,6 +659,18 @@ def _execute_capture(plan):  # pragma: no cover - real hardware (needs a 2nd mon
     hits = sorted(glob.glob(plan["out_path"] + "*.pcapng") + glob.glob(plan["out_path"] + "*.cap"),
                   key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0)
     capfile = hits[-1] if hits else None
+    # airodump appends a "-NN" session counter (dad24_..d2-02.cap); normalize to
+    # the pwnagotchi-style "<ssid>_<bssid>.<ext>" so the rest of the bus (netmanager
+    # re-import, crack-house) recognizes it.
+    if capfile:
+        ext = os.path.splitext(capfile)[1]
+        norm = plan["out_path"] + ext
+        if os.path.abspath(capfile) != os.path.abspath(norm):
+            try:
+                os.replace(capfile, norm)
+                capfile = norm
+            except Exception:
+                pass
     handshake = False
     if capfile:
         # best-effort: hcxpcapngtool emits a non-empty .22000 iff there's a usable hash
