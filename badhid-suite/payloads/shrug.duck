@@ -1,0 +1,9 @@
+REM shrug.duck [FUNNY] - types an ASCII shrug and a joke. Harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 10
+STRINGLN \_(")_/
+STRINGLN i typed this myself. no idea how. i'm just a keyboard.

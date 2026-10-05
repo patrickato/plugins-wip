@@ -100,16 +100,24 @@ what to do next.
 
 ---
 
-## The demo payloads (all harmless — type-only, no commands)
+## The demo payloads (all harmless)
 
-| File | What it does | OS |
+The suite ships a **catalog of 20 harmless payloads** — mild to spooky to
+sketchy-*looking* — each of which only types text, opens an app, or runs a
+**read-only** command. See **PAYLOADS.md** for the full annotated list. A taste:
+
+| File | Tier | What it does |
 |---|---|---|
-| `hello_world.duck` | Types one line into the focused window. The quietest proof it works. | any |
-| `spooky_skull.duck` | Opens Notepad and types an ASCII skull & crossbones with "I SEE YOU" / "I'M COMING FOR YOU!". Looks sinister, does **nothing** but type text you can close without saving. | Windows (adapt for mac/Linux) |
-| `rickroll.duck` | Opens the classic video in the default browser. | Windows (adapt for mac/Linux) |
+| `hello_world.duck` | mild | Types one line — the quietest proof it works. |
+| `keymap_test.duck` | utility | Types every key so you can confirm nothing's dropped. Run this first on a new target. |
+| `rickroll.duck` | funny | Opens the classic video. |
+| `capslock_prank.duck` | funny | Toggles Caps Lock 8× and leaves it as it started. |
+| `spooky_skull.duck` | spooky | ASCII skull in Notepad — looks sinister, pure text. |
+| `hacker_theater.duck` | spooky | Fake "hollywood hacking" log in Notepad. Theater only. |
+| `shell_whoami.duck` | sketchy-looking | Opens cmd, runs `whoami`/`hostname`/`ver` — read-only, changes nothing. |
 
-The two Windows demos use **Win+R (Run)** to launch Notepad / open the URL. Each
-file's header has the one-line tweak for macOS/Linux.
+The Windows demos use **Win+R (Run)**; each file's header has the macOS/Linux
+tweak. The plain ones work on any OS if you focus a text field first.
 
 ---
 

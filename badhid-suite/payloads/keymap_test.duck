@@ -1,0 +1,15 @@
+REM keymap_test.duck [UTILITY] - types every letter, digit and symbol so you can
+REM confirm the target receives them correctly (no dropped/mistyped chars). If
+REM something looks wrong, raise inter_key_delay_ms or check the keyboard layout.
+REM Open Notepad (or focus any text field) first.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 8
+STRINGLN the quick brown fox jumps over the lazy dog
+STRINGLN THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG
+STRINGLN 0123456789
+STRINGLN `~!@#$%^&*()-_=+[]{}\|;:'",.<>/?
+STRINGLN if every character above looks right, your keymap/layout is good.

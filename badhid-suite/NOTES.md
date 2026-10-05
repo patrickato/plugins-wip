@@ -16,8 +16,10 @@ the operator and kept off the repo:
 
 - **Shipped:** the USB-gadget plumbing, a DuckyScript-subset interpreter + US
   HID keymap, the arm/disarm model, token auth, `bind_scope`, the manual-fire
-  UI, loud logging, and **three harmless demo payloads** (hello_world, an
-  inert Notepad skull gag, and a rickroll) — all type-only, no commands.
+  UI, loud logging, and a **catalog of ~20 harmless demo payloads** (mild to
+  spooky to sketchy-looking) — each only types text, opens an app, or runs a
+  read-only command (e.g. `whoami`). None change/delete/download/persist/
+  exfiltrate. See PAYLOADS.md. No offensive payloads are shipped.
 - **Not shipped, by design:** every actual offensive payload (shells,
   credential capture, AV/defender tampering, persistence, exfiltration). Those
   are what turn keystroke injection into a compromise; the operator writes

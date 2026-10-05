@@ -1,0 +1,18 @@
+REM too_many_notepads.duck [FUNNY] - opens three Notepad windows with messages.
+REM Mildly chaotic, totally harmless - just close them. Windows only.
+DELAY 800
+GUI r
+DELAY 500
+STRINGLN notepad
+DELAY 1400
+STRINGLN Window 1 of 3 - hi there!
+GUI r
+DELAY 500
+STRINGLN notepad
+DELAY 1400
+STRINGLN Window 2 of 3 - still me!
+GUI r
+DELAY 500
+STRINGLN notepad
+DELAY 1400
+STRINGLN Window 3 of 3 - ok i'll stop now. close us whenever.

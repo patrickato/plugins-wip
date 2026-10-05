@@ -1,0 +1,18 @@
+REM capslock_prank.duck [FUNNY] - toggles CAPS LOCK a few times then leaves it
+REM exactly as it started (even number of toggles). Harmless, just silly.
+DELAY 800
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK
+DELAY 300
+CAPSLOCK

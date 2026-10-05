@@ -1,0 +1,15 @@
+REM welcome.duck [MILD] - opens Notepad and types a friendly intro. Harmless.
+REM Windows (Win+R). mac/Linux: open any text editor and focus it, then the
+REM STRINGLN lines below will type into it.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 10
+STRINGLN Hi! A Raspberry Pi pretending to be a USB keyboard typed this.
+ENTER
+STRINGLN This is the BadHID lab tool. It only types what it's told to.
+STRINGLN Nothing here changed your computer - close without saving.
+ENTER
+STRINGLN  - BadHID (the legal kind of hacking)

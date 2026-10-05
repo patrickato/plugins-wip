@@ -1,0 +1,18 @@
+REM ghost_typer.duck [FUNNY/SPOOKY] - types slowly like a hesitant ghost.
+REM Harmless text only. Open Notepad first (or focus a text field).
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+STRING is
+DELAY 600
+STRING  anyone
+DELAY 600
+STRING  there
+DELAY 600
+STRINGLN ?
+DELAY 1500
+STRINGLN ...hello?
+DELAY 1200
+STRINGLN (it's just a keyboard. boo.)

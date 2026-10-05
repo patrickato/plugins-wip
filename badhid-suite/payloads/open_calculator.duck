@@ -1,0 +1,6 @@
+REM open_calculator.duck [MILD] - just opens the Calculator. Proof it can launch
+REM an app. Harmless. Windows (Win+R calc). mac: GUI SPACE then type calculator.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN calc

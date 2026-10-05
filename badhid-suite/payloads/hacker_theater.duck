@@ -1,0 +1,16 @@
+REM hacker_theater.duck [SPOOKY/FUNNY] - fake "hollywood hacking" log typed into
+REM Notepad. It's pure theater: it opens a TEXT EDITOR and TYPES. Nothing is
+REM accessed, decrypted, or deleted. Harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 12
+STRINGLN > initializing l33t h4x...
+STRINGLN > ACCESS GRANTED
+STRINGLN > bypassing mainframe firewall............ done
+STRINGLN > DECRYPTING TOP SECRET FILES.......
+STRINGLN > uploading to the cloud.......
+STRINGLN > ...just kidding. this is Notepad. nothing happened. :)
+STRINGLN > - BadHID theater

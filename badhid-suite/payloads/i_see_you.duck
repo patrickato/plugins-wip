@@ -1,0 +1,12 @@
+REM i_see_you.duck [SPOOKY] - a slow creepy message. Text only, harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 40
+STRINGLN I  S E E  Y O U
+DELAY 1500
+STRINGLN behind you.
+DELAY 1500
+STRINGLN ...just kidding. it's a Raspberry Pi. you're fine.

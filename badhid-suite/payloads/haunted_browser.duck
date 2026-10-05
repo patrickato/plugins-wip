@@ -1,0 +1,7 @@
+REM haunted_browser.duck [SPOOKY/FUNNY] - opens a YouTube search for the
+REM "Spooky Scary Skeletons" song in the default browser. Harmless - just opens
+REM a web search. Windows (Win+R). mac/Linux: adapt the launcher (see rickroll).
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN https://www.youtube.com/results?search_query=spooky+scary+skeletons

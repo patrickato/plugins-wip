@@ -290,8 +290,10 @@ def test_write_timeout_option():
 def test_shipped_payloads():
     pdir = os.path.join(HERE, "..", "payloads")
     files = sorted(f for f in os.listdir(pdir) if f.endswith(".duck"))
-    check("ships the three demo payloads",
-          set(files) == {"hello_world.duck", "rickroll.duck", "spooky_skull.duck"})
+    # core demos must always be present; the catalog can grow beyond them
+    core = {"hello_world.duck", "rickroll.duck", "spooky_skull.duck"}
+    check("ships the core demo payloads", core.issubset(set(files)))
+    check("ships a generous catalog (>=10)", len(files) >= 10)
     for f in files:
         try:
             acts = mod.parse_ducky(open(os.path.join(pdir, f), encoding="utf-8").read(),

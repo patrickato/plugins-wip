@@ -1,0 +1,11 @@
+REM shell_netinfo.duck [SKETCHY-LOOKING, HARMLESS] - opens a REAL terminal and
+REM runs ipconfig, which only PRINTS this machine's network settings. Read-only,
+REM changes nothing. Windows (Win+R cmd).
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN cmd
+DELAY 1400
+DEFAULTDELAY 15
+STRINGLN ipconfig
+STRINGLN echo (read-only network info - nothing was changed)

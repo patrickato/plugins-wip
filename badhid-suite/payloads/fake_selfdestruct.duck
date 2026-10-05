@@ -1,0 +1,21 @@
+REM fake_selfdestruct.duck [SPOOKY/FUNNY] - a dramatic countdown that does
+REM absolutely nothing. Text only, harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+STRINGLN SELF-DESTRUCT SEQUENCE INITIATED
+DELAY 800
+STRING 5...
+DELAY 800
+STRING 4...
+DELAY 800
+STRING 3...
+DELAY 800
+STRING 2...
+DELAY 800
+STRING 1...
+DELAY 1000
+STRINGLN
+STRINGLN ...psych. It's a text file. Nothing happened. :)

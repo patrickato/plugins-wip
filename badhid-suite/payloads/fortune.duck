@@ -1,0 +1,12 @@
+REM fortune.duck [MILD] - opens Notepad and types a wholesome fortune. Harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 10
+STRINGLN Your fortune:
+ENTER
+STRINGLN "The best way to predict the future is to build it in your basement lab."
+ENTER
+STRINGLN Lucky port: USB-C.  Lucky number: 0x1d6b.

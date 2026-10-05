@@ -1,0 +1,19 @@
+REM loading_bar.duck [FUNNY] - types a fake progress log. Harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 10
+STRINGLN Loading something very important...
+STRING [#####               ] 25%
+DELAY 700
+STRINGLN
+STRING [##########          ] 50%
+DELAY 700
+STRINGLN
+STRING [###############     ] 75%
+DELAY 700
+STRINGLN
+STRINGLN [####################] 100%
+STRINGLN Task failed successfully.

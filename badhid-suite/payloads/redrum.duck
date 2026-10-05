@@ -1,0 +1,11 @@
+REM redrum.duck [SPOOKY] - types REDRUM a few times (it's "murder" backwards -
+REM a movie reference). Text only, harmless.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 15
+STRINGLN REDRUM REDRUM REDRUM
+REPEAT 5
+STRINGLN (that's just 'murder' spelled backwards. spooky, not harmful.)

@@ -1,0 +1,14 @@
+REM shell_whoami.duck [SKETCHY-LOOKING, HARMLESS] - opens a REAL terminal and
+REM runs READ-ONLY commands that just PRINT info (who you are, the hostname, the
+REM Windows version). It changes nothing, downloads nothing, deletes nothing.
+REM This is the "yes, it can reach a shell" demo. Windows (Win+R cmd).
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN cmd
+DELAY 1400
+DEFAULTDELAY 15
+STRINGLN whoami
+STRINGLN hostname
+STRINGLN ver
+STRINGLN echo (those were read-only - nothing was changed)

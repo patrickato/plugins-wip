@@ -1,0 +1,12 @@
+REM ascii_cat.duck [MILD] - opens Notepad and draws a little cat. Harmless.
+REM Windows (Win+R). mac/Linux: focus a text editor first instead of the Win+R line.
+DELAY 800
+GUI r
+DELAY 600
+STRINGLN notepad
+DELAY 1800
+DEFAULTDELAY 12
+STRINGLN  /\_/\
+STRINGLN ( o.o )
+STRINGLN  > ^ <
+STRINGLN meow. you've been visited by the BadHID cat.
