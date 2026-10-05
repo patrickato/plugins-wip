@@ -362,7 +362,15 @@ def resolve_handshakes_dir(configured, pwnagotchi_config="/etc/pwnagotchi/config
 
 
 def fleet_rows(fleet_data):
-    """fleetctl fleet.json {label:{url,token,badhid:{url,token}}} -> fleet entries."""
+    """fleetctl fleet.json -> fleet entries.
+
+    fleetctl wraps its agents under an "agents" key:
+    {"agents": {label: {url, token, badhid:{url,token}}}}. Unwrap that so we
+    iterate the agent labels, not the wrapper. A bare {label: {...}} map (older
+    / hand-written) still works.
+    """
+    if isinstance(fleet_data, dict) and isinstance(fleet_data.get("agents"), dict):
+        fleet_data = fleet_data["agents"]
     out = []
     for label, a in (fleet_data or {}).items():
         if not isinstance(a, dict):

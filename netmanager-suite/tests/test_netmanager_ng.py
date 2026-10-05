@@ -150,6 +150,15 @@ def test_import_parsers():
     check("fleet_rows count", len(fr) == 2)
     check("fleet_rows badhid carried", any(r["fields"].get("badhid_url") == "http://1.2.3.4:8083" for r in fr))
 
+    # fleetctl wraps agents under an "agents" key - must unwrap, not treat
+    # "agents" as a single agent label.
+    wrapped = m.fleet_rows({"agents": {"pi-a": {"url": "http://1.2.3.4:8084", "token": "t"},
+                                       "pi-b": {"url": "http://5.6.7.8:8084", "token": "u"}}})
+    check("fleet_rows unwraps agents key", len(wrapped) == 2)
+    check("fleet_rows no junk agents entry", all(r["name"] != "agents" for r in wrapped))
+    check("fleet_rows unwrapped urls", sorted(r["fields"]["url"] for r in wrapped) ==
+          ["http://1.2.3.4:8084", "http://5.6.7.8:8084"])
+
 
 def test_resolve_handshakes_dir():
     import tempfile
@@ -237,7 +246,7 @@ def test_live_http():
         open(os.path.join(hs, fn), "w").close()
     fj = os.path.join(d, "fleet.json")
     with open(fj, "w") as fh:
-        json.dump({"pi-a": {"url": "http://9.9.9.9:8084", "token": "t"}}, fh)
+        json.dump({"agents": {"pi-a": {"url": "http://9.9.9.9:8084", "token": "t"}}}, fh)
     p.options.update({"auth_token": "test-token-123456", "bind_scope": "localhost",
                       "port": 8097, "store_path": os.path.join(d, "n.json"), "ui_enabled": False,
                       "handshakes_dir": hs, "fleet_json_path": fj})
