@@ -11,10 +11,43 @@ set -eu
 CONFIG="${CONFIG:-/etc/pwnagotchi/config.toml}"
 HOME_DIR="${BADHID_HOME:-/etc/pwnagotchi/badhid_ng}"
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-FIX=0
-[ "${1:-}" = "--fix" ] && FIX=1
+FIX=0; NO_INSTALL=0
+for a in "$@"; do
+  case "$a" in
+    --fix) FIX=1 ;;
+    --no-install) NO_INSTALL=1 ;;   # never auto-install a QR tool; just print the URL
+    *) echo "unknown option: $a  (use --fix and/or --no-install)"; exit 2 ;;
+  esac
+done
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root: sudo ./badhid_phone.sh"; exit 1; }
+
+# Render a scannable QR for a URL using whatever real encoder is available, and
+# if none is, install one ONCE (we're already root) so a fresh pi still shows a
+# code. Returns non-zero only if it truly couldn't (offline + --no-install, etc).
+render_qr() {
+  u="$1"
+  if command -v qrencode >/dev/null 2>&1; then qrencode -t ANSIUTF8 "$u"; return 0; fi
+  if python3 -c "import qrcode" 2>/dev/null; then
+    python3 -c "import qrcode,sys;qr=qrcode.QRCode(border=1);qr.add_data(sys.argv[1]);qr.print_ascii()" "$u"
+    return 0
+  fi
+  [ "$NO_INSTALL" = "1" ] && return 1
+  echo "(no QR tool found - installing 'qrencode' once so you get a scannable code...)" >&2
+  if command -v apt-get >/dev/null 2>&1; then
+    if apt-get install -y qrencode >/dev/null 2>&1 \
+       || { apt-get update >/dev/null 2>&1 && apt-get install -y qrencode >/dev/null 2>&1; }; then
+      command -v qrencode >/dev/null 2>&1 && { qrencode -t ANSIUTF8 "$u"; return 0; }
+    fi
+  fi
+  if command -v pip3 >/dev/null 2>&1 && pip3 install qrcode --break-system-packages >/dev/null 2>&1; then
+    if python3 -c "import qrcode" 2>/dev/null; then
+      python3 -c "import qrcode,sys;qr=qrcode.QRCode(border=1);qr.add_data(sys.argv[1]);qr.print_ascii()" "$u"
+      return 0
+    fi
+  fi
+  return 1
+}
 
 # Print only the [main.plugins.badhid_ng] block: from its header to the next
 # top-level [section] header (or EOF). awk is on every pi, and this never bleeds
@@ -68,14 +101,11 @@ URL="http://$HOST:$PORT/?token=$TOKEN"
 echo "=============================================================="
 echo " Scan this with your phone's camera ($NOTE):"
 echo "=============================================================="
-if command -v qrencode >/dev/null 2>&1; then
-  qrencode -t ANSIUTF8 "$URL"
-elif python3 -c "import qrcode" 2>/dev/null; then
-  python3 -c "import qrcode,sys;qr=qrcode.QRCode(border=1);qr.add_data(sys.argv[1]);qr.print_ascii()" "$URL"
-else
-  echo "(install a QR tool to get a scannable code: sudo apt-get install -y qrencode"
-  echo "  or: pip3 install qrcode --break-system-packages)"
-fi
+render_qr "$URL" || {
+  echo "(couldn't show a QR - no encoder and auto-install didn't work; are you online?)"
+  echo "  install one and re-run:  sudo apt-get install -y qrencode"
+  echo "  or run with --no-install to always skip that and just use the URL below."
+}
 echo
 echo " Or type this URL into your phone browser:"
 echo "   $URL"

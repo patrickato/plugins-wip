@@ -582,7 +582,7 @@ def gadget_setup_script_path():
 
 class BadHIDNG(plugins.Plugin):
     __author__ = "built for this project's offensive-tooling backlog (A1+A2)"
-    __version__ = "0.2.0"
+    __version__ = "0.2.1"
     __license__ = "GPL3"
     __description__ = (
         "USB HID keystroke-injection framework for your own authorized lab "
