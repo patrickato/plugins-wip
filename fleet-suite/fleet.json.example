@@ -1,0 +1,13 @@
+{
+  "_comment": "Example fleetctl config. Real path: ~/.config/fleetctl/fleet.json (0600). Each agent is one you OWN, running remoteexec_ng (B1). Enroll with: fleetctl enroll <label> <url> <token> - don't hand-edit tokens in here unless you want to.",
+  "agents": {
+    "pi4-pwn": {
+      "url": "http://pwnagotchi.local:8084",
+      "token": "the-remoteexec-token-from-that-pi"
+    },
+    "pi5-field": {
+      "url": "http://100.64.0.12:8084",
+      "token": "the-remoteexec-token-from-the-pi5"
+    }
+  }
+}
