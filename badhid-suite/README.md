@@ -237,7 +237,7 @@ Run **`sudo ./badhid_doctor.sh`** first — it pinpoints the broken link. Common
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `no UDC found` from the gadget script | USB port not in gadget mode (often `dr_mode=host`) | `sudo ./enable_dwc2.sh && sudo reboot` |
+| `no UDC found` from the gadget script | No `dwc2` overlay active for this board. On stock Raspberry Pi OS the only `dwc2` line is under `[cm5]` (Compute Module 5 only), so a Pi 4/Zero has none active | `sudo ./enable_dwc2.sh && sudo reboot` — it adds one under `[all]` and leaves the `[cm5]`/display/other lines untouched |
 | gadget script: `/dev/hidg0 missing` after bind | legacy `g_ether` grabbed the controller | the script auto-unbinds it; re-run; or `sudo ./setup_composite_gadget.sh --hid-only` |
 | server won't start, log: token refused | `auth_token` blank/placeholder/<12 chars | set a long random token in config, restart |
 | fire error: "HID device not accepting input" | Pi isn't plugged into a powered, awake, enumerated target | plug into the target; wake it; check the cable |

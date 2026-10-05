@@ -49,7 +49,10 @@ if [ "$REVERT" = "1" ]; then
 fi
 
 # --- board detection --------------------------------------------------------
-MODEL="$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')"; MODEL="${MODEL:-unknown}"
+MODEL="unknown"
+if [ -r /proc/device-tree/model ]; then
+  MODEL="$(tr -d '\0' < /proc/device-tree/model)"
+fi
 echo "Board: $MODEL"
 
 CAP="unknown"   # capable | experimental | incapable | unknown
@@ -88,27 +91,60 @@ case "$CAP" in
                 echo "            doesn't have a device-capable port." ;;
 esac
 
-# --- edit config.txt --------------------------------------------------------
+# --- edit config.txt (SECTION-AWARE) ----------------------------------------
+# config.txt has conditional [sections]. A dtoverlay under [cm5]/[pi3]/[none]/
+# etc. only applies on THAT board. The stock Bookworm config ships
+# `dtoverlay=dwc2,dr_mode=host` under [cm5], which does NOT apply to a Pi 4 /
+# Zero - so editing it in place would do nothing. We must act on a line that is
+# ACTIVE for this board: one in the base area (before any [section]) or under
+# [all]. If none exists, we append one under a fresh [all].
+#
+# analyze() prints, per dwc2 overlay line:  ACTIVE:<lineno>:<section>:<text>
+# for base/[all] lines, or TRAPPED:... for ones locked in a non-matching section.
+analyze() {
+  awk '
+    BEGIN { section = "base" }
+    /^[[:space:]]*\[/ {
+      s = $0; sub(/^[[:space:]]*\[/, "", s); sub(/\].*$/, "", s)
+      section = tolower(s); next
+    }
+    /^[[:space:]]*dtoverlay=dwc2([,[:space:]]|$)/ {
+      if (section == "base" || section == "all") print "ACTIVE:" NR ":" section ":" $0
+      else print "TRAPPED:" NR ":" section ":" $0
+    }
+  ' "$CFG"
+}
+
 [ -f "$BK" ] || cp -a "$CFG" "$BK"
 echo "Backup: $BK"
 
-BEFORE="$(grep -n 'dtoverlay=dwc2' "$CFG" || true)"
-if grep -q '^[[:space:]]*dtoverlay=dwc2' "$CFG"; then
-  sed -i -E "s|^[[:space:]]*dtoverlay=dwc2.*|dtoverlay=dwc2,dr_mode=$MODE|" "$CFG"
-else
-  printf '\n# added by enable_dwc2.sh for badhid gadget mode\ndtoverlay=dwc2,dr_mode=%s\n' "$MODE" >> "$CFG"
+MAP="$(analyze)"
+ACTIVE_LINE="$(echo "$MAP" | grep '^ACTIVE:' | head -n1 || true)"
+TRAPPED="$(echo "$MAP" | grep '^TRAPPED:' || true)"
+
+if [ -n "$TRAPPED" ]; then
+  echo "note: a dwc2 overlay exists but is scoped to a non-matching section"
+  echo "      (won't affect this board) - leaving it untouched:"
+  echo "$TRAPPED" | sed 's/^TRAPPED:/        line /; s/:/ /2'
 fi
-AFTER="$(grep -n 'dtoverlay=dwc2' "$CFG" || true)"
 
-echo "---- change ----"
-echo "before: ${BEFORE:-'(no dwc2 line)'}"
-echo "after : ${AFTER}"
-echo "----------------"
-
-if grep -q "^dtoverlay=dwc2,dr_mode=$MODE" "$CFG"; then
-  echo "OK: dtoverlay=dwc2,dr_mode=$MODE set in $CFG"
+if [ -n "$ACTIVE_LINE" ]; then
+  LN="$(echo "$ACTIVE_LINE" | cut -d: -f2)"
+  echo "found an ACTIVE dwc2 overlay for this board at line $LN:"
+  echo "    $(sed -n "${LN}p" "$CFG")"
+  # normalize just that line to our chosen mode
+  sed -i "${LN}s|^[[:space:]]*dtoverlay=dwc2.*|dtoverlay=dwc2,dr_mode=$MODE|" "$CFG"
+  echo "    -> $(sed -n "${LN}p" "$CFG")"
 else
-  echo "!!! edit didn't land as expected - restoring backup."; cp -a "$BK" "$CFG"; exit 1
+  echo "no dwc2 overlay is active for this board - appending one under [all]"
+  printf '\n# added by enable_dwc2.sh for badhid gadget (applies to all boards)\n[all]\ndtoverlay=dwc2,dr_mode=%s\n' "$MODE" >> "$CFG"
+fi
+
+# verify: an ACTIVE line in our mode must now exist
+if echo "$(analyze)" | grep -q "^ACTIVE:.*dtoverlay=dwc2,dr_mode=$MODE"; then
+  echo "OK: an active 'dtoverlay=dwc2,dr_mode=$MODE' is now in effect for this board."
+else
+  echo "!!! change didn't land as expected - restoring backup."; cp -a "$BK" "$CFG"; exit 1
 fi
 
 echo ""
