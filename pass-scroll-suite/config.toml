@@ -1,0 +1,47 @@
+# PassScroll - add this block to /etc/pwnagotchi/config.toml
+#
+# This fork's plugin loader does NOT read a plugin's __defaults__ - every
+# option below must be set here explicitly. Config section name = the plugin
+# file's exact basename: passscroll.py -> [main.plugins.passscroll].
+
+[main.plugins.passscroll]
+enabled = true
+
+# Files to read cracked passwords from. Globs allowed. These defaults are the
+# plugins-wip data-bus canonical producers, so if you run crack-house-suite /
+# wpa-sec they "just work" with no change. Parses three formats automatically:
+# hashcat 22000 potfile, wpa-sec "bssid:sta:essid:password", and plain
+# "essid:password" / .cracked lines.
+# >>> USER INPUT REQUIRED <<< add any extra paths your rig writes cracks to.
+main.plugins.passscroll.sources = [
+  "/etc/pwnagotchi/handshakes/crack_house_ng.potfile",
+  "/etc/pwnagotchi/handshakes/wpa-sec.cracked.potfile",
+  "/etc/pwnagotchi/handshakes/my.potfile",
+  "/etc/pwnagotchi/handshakes/OnlineHashCrack.cracked",
+  "/etc/pwnagotchi/handshakes/*.cracked",
+]
+
+# How many of the most-recent cracks to rotate through (5-10 is sensible).
+main.plugins.passscroll.max_entries = 7
+
+# Seconds each entry stays on screen before advancing.
+main.plugins.passscroll.scroll_interval = 5
+
+# Seconds between re-reading the source files (so fresh cracks show up).
+main.plugins.passscroll.refresh_interval = 60
+
+# "SSID: password" when true, just the password when false.
+main.plugins.passscroll.show_ssid = true
+
+# Show the password as **** instead of plaintext (off by default - it's your
+# own device and your own data, but the switch is here if a screen is visible).
+main.plugins.passscroll.mask = false
+
+# Truncate the on-screen string to fit the small TFT.
+main.plugins.passscroll.max_len = 22
+
+# >>> USER INPUT REQUIRED <<< position (x, y) for YOUR 480x320 TFT layout.
+main.plugins.passscroll.position = [5, 95]
+
+# Label drawn before the value.
+main.plugins.passscroll.label = "pwd"
