@@ -44,14 +44,22 @@ viz (crack-house), sigstr & mad-hatter (timer CSV), fix-region (gps sibling). Wh
 cross-read, make the path a config option defaulting to the producer's default. **Beast Core
 can join this bus as just another read-only consumer — the paths are the contract.**
 
-## Safety rule for offensive / firing-capable plugins
+## Offensive / firing-capable plugins — scope, not a cage
 
-Any plugin that can deauth/jam/target networks gates on an **explicit authorized-target
-allowlist (BSSID and/or SSID), empty by default** — never on physical/signal-range
-assumptions. The reference deauth implementation (`WifiJtest`, formerly `WifiJammerNG`)
-now lives as `wifiJtest` in `patrickato/test-plugins` (moved there); `crack-pipeline-suite`
-in this repo applies the same gate to a cracking pipeline. This is non-negotiable; keep the
-allowlist gate itself strict while making legitimate use low-friction.
+Offensive plugins ship at full capability. The only thing centralized is *aiming*: any plugin that
+can deauth/jam/target consults the **central Scope** — the one list of targets you own or are
+authorized to assess (your own networks and devices, your lab, gear you bought to test, engagements
+you're contracted for, ranges, CTFs, consenting peers). That space is broad by design, not a bench
+restriction. It starts empty only so nothing fires at a target you didn't choose; arming is one
+gesture (add / bulk-import a list / arm-lab, with per-job groups and optional expiry so lapsed
+permission stops authorizing itself). Scope decides WHERE a plugin is aimed, never WHAT it can do —
+inside scope it's unrestricted, and keep legitimate use low-friction. The reference deauth
+implementation (`WifiJtest`, formerly `WifiJammerNG`) now lives as `wifiJtest` in
+`patrickato/test-plugins`; `crack-pipeline-suite` in this repo consults the same central Scope.
+
+The only firing that stays out entirely is the kind that can't be aimed and hits bystanders:
+indiscriminate BLE/beacon spam and RF jamming (also illegal to transmit) — detect those, never emit
+them. That is the whole exclusion list.
 
 ## Any suite running its own web server
 
@@ -74,7 +82,9 @@ sandbox-verified vs. what still needs a real-hardware pass.
    actual Pi (install per the suite README, verify on-device). Sandbox green ≠ done.
 2. Keep originals preserved (verbatim, plus any real upstream config as
    `config.original.toml`) so a rebuild/merge can be reverted.
-3. Offensive/attack plugins: test only against the user's own authorized lab hardware.
+3. Offensive/attack plugins: exercise only against targets in the central Scope — anything you own
+   or are authorized to assess (your lab, your gear, contracted engagements, ranges, CTFs,
+   consenting peers), not merely a bench.
 
 See `patrickato/test-plugins` for the audit that feeds this repo, and
 `patrickato/beastagotchi` for the platform these plugins run alongside.
